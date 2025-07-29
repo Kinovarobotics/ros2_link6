@@ -1,0 +1,18 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:macro name="joint_interface" params="name command_interfaces:='position velocity' p:=0 d:=0">
+        <joint name="${name}">
+            <!-- state interfaces -->
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+            <state_interface name="effort"/>
+            <!-- command interfaces -->
+            <xacro:foreach cmd_if="${command_interfaces.split(' ')}">
+                <command_interface name="${cmd_if}">
+                    <param name="min">-1</param><param name="max">1</param>
+                </command_interface>
+            </xacro:foreach>
+            <!-- optional gains (not read by gz_ros2_control but handy for drivers) -->
+            <param name="p">${p}</param><param name="d">${d}</param>
+        </joint>
+    </xacro:macro>
+</robot>

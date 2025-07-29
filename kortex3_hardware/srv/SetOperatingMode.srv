@@ -1,0 +1,6 @@
+# Request
+uint8 operating_mode
+---
+# Response
+bool success
+string message

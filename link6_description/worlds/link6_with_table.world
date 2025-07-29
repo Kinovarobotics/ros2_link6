@@ -1,0 +1,21 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="link6_world">
+
+
+    <include>
+      <uri>model://link6_table</uri>
+
+      <pose>0 0 0 0 0 0</pose>
+    </include>
+
+    <include>
+      <uri>model://empty</uri> 
+    </include>
+
+
+    <plugin name="ros_ign_bridge" filename="libgz_ros2_bridge.so">
+      <topicName>~/clock</topicName>
+    </plugin>
+  </world>
+</sdf>

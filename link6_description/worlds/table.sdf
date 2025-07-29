@@ -1,0 +1,41 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="link6_table">
+
+    <static>true</static>
+
+
+    <link name="link6_table_link">
+
+      <pose>0 0 0 1.5708 0 0</pose>
+
+
+      <visual name="table_visual">
+        <geometry>
+          <mesh>
+            <uri>model://link6_description/meshes/link6_table.stl</uri>
+           <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+        <material>
+    
+          <ambient>0 0 1 1</ambient>
+          <diffuse>0 0 1 1</diffuse>
+        </material>
+      </visual>
+
+
+      <collision name="table_collision">
+        <geometry>
+          <mesh>
+            <uri>model://link6_description/meshes/link6_table.stl</uri>
+           <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+
+
+    <pose>0 0 0 0 0 0</pose>
+  </model>
+</sdf>
