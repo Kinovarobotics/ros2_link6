@@ -49,6 +49,10 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+// Robotiq gripper plugin headers
+#include "robotiq_gripper/Grippers/FingerGripper.h"
+#include "robotiq_gripper/robotiq_plugin/GripperStatus.h"
+
 namespace kortex3_driver
 {
 namespace k_api = Kinova::Api;
@@ -62,6 +66,17 @@ namespace fs = std::filesystem;
  * enabling control via the ros2_control framework. It handles communication for
  * low-frequency commands (MQTT) and high-frequency state feedback (UDP).
  */
+
+class MyFingerGripper : public FingerGripper {
+public:
+  MyFingerGripper(std::shared_ptr<slick::com::ModbusClientWrapper> wrapper)
+  : FingerGripper(wrapper) {}
+
+  uint32_t GetModbusTimeout() override {
+    return 200; // Or retrieve from wrapper if needed
+  }
+};
+
 class Kortex3HardwareInterface : public hardware_interface::SystemInterface
 {
 public:
@@ -107,6 +122,7 @@ public:
   bool calibrate_robot();
 
 private:
+  std::mutex gripper_mtx_;
   // --- Private Helper Methods ---
   void check_and_power_on_robot();
   void send_zero_velocities();
@@ -119,6 +135,8 @@ private:
   void handle_clear_faults(
       const std::shared_ptr<kortex3_hardware::srv::ClearFaults::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response);
+  std::optional<double> readGripperPosition();
+  void sendGripperCommand(double position_radians);
 
   // --- Connection Parameters ---
   std::string robot_ip_;      ///< IP address of the robot controller.
@@ -142,6 +160,24 @@ private:
   std::vector<double> joint_positions_;      ///< Buffer for joint position states.
   std::vector<double> joint_velocities_;     ///< Buffer for joint velocity states.
   std::vector<double> joint_torques_;        ///< Buffer for joint torque states.
+  // Gripper
+  std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
+  std::unique_ptr<MyFingerGripper> gripper_;
+  std::string gripper_joint_name_;
+  double gripper_command_position_ = 0.0;
+  double gripper_position_ = 0.0;
+  double gripper_velocity_ = 0.0;
+  bool gripper_initialized_ = false;
+  // Timing
+  // Gripper send gating (tune periods as you like) for write
+  std::chrono::steady_clock::time_point next_gripper_send_{};
+  double last_gripper_cmd_pos_{std::numeric_limits<double>::quiet_NaN()};
+  const std::chrono::milliseconds gripper_cmd_period_{50};   // 20 Hz send budget
+  // Poll gating (avoid spamming Modbus) for read
+  std::chrono::steady_clock::time_point next_gripper_poll_{};
+  const std::chrono::milliseconds gripper_poll_period_{100};  // 10 Hz
+
+
 
   // --- ROS 2 Components ---
   rclcpp::Node::SharedPtr node_ptr_;

@@ -19,7 +19,8 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     udp_feedback_port_(10001),
     actuator_count_(6), // Default, updated from robot during activation.
     in_fault_(false),
-    node_ptr_(nullptr)
+    node_ptr_(nullptr),
+    gripper_joint_name_("")
 {
 }
 
@@ -33,17 +34,29 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  info_ = info;
   // Parse hardware parameters from the URDF.
-  robot_ip_ = info.hardware_parameters.at("robot_ip");
-  username_ = info.hardware_parameters.at("username");
-  password_ = info.hardware_parameters.at("password");
-  if (info.hardware_parameters.count("mqtt_port"))
+  robot_ip_ = info_.hardware_parameters.at("robot_ip");
+  username_ = info_.hardware_parameters.at("username");
+  password_ = info_.hardware_parameters.at("password");
+  if (info_.hardware_parameters.count("mqtt_port"))
   {
-    mqtt_port_ = std::stoi(info.hardware_parameters.at("mqtt_port"));
+    mqtt_port_ = std::stoi(info_.hardware_parameters.at("mqtt_port"));
   }
-  if (info.hardware_parameters.count("udp_feedback_port"))
+  if (info_.hardware_parameters.count("udp_feedback_port"))
   {
-    udp_feedback_port_ = std::stoi(info.hardware_parameters.at("udp_feedback_port"));
+    udp_feedback_port_ = std::stoi(info_.hardware_parameters.at("udp_feedback_port"));
+  }
+
+  // gripper joint name
+  gripper_joint_name_ = info_.joints[info_.joints.size()-1].name;
+  if (gripper_joint_name_.empty())
+  {
+    RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
   }
 
   // Initialize state and command vectors.
@@ -51,13 +64,15 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   joint_positions_.resize(actuator_count_, 0.0);
   joint_velocities_.resize(actuator_count_, 0.0);
   joint_torques_.resize(actuator_count_, 0.0);
+  gripper_command_position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_position_ = std::numeric_limits<double>::quiet_NaN();
 
   // Verify that the URDF's joint count matches the expected count.
-  if (info.joints.size() != actuator_count_)
+  if (info_.joints.size() != actuator_count_+1)
   {
     RCLCPP_ERROR(LOGGER,
       "URDF configuration error: Expected %zu joints, but got %zu.",
-      actuator_count_, info.joints.size());
+      actuator_count_, info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -146,6 +161,43 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     // 6. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+/*
+    // Initialize gripper Modbus connection
+    constexpr uint16_t gripper_slave_id = 9; // Robotiq default Modbus ID
+    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
+
+    if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
+      RCLCPP_ERROR(LOGGER, "Failed to connect to Robotiq gripper via Modbus.");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
+*/
+    // Activate the gripper
+    /*
+    gripper_->SetActivateRequest();
+    gripper_->SendRequest();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Optional short delay
+    gripper_->ReadRegister();
+    if (!gripper_->GetActivationCompleted()) 
+    {
+      RCLCPP_WARN(LOGGER, "Gripper not fully activated yet");
+    }
+    */
+    // First read from gripper
+    auto opt_gripper_position = readGripperPosition();
+    if (!opt_gripper_position.has_value())
+    {
+      RCLCPP_WARN(LOGGER, "Failed to read gripper position on activation.");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    float gripper_initial_position = static_cast<float>(opt_gripper_position.value());
+    RCLCPP_INFO(LOGGER, "Gripper initial position is '%f'.", gripper_initial_position);
+
+    //to radians
+    gripper_command_position_ = gripper_initial_position;
+
+    sendGripperCommand(gripper_initial_position);
 
     RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -193,6 +245,12 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
     {
       router_mqtt_->SpinProcess(std::chrono::milliseconds{0});
     }
+
+    std::lock_guard<std::mutex> lk(gripper_mtx_);
+    if (modbus_wrapper_) modbus_wrapper_->CloseConnection();
+    gripper_.reset();
+    modbus_wrapper_.reset();
+    gripper_initialized_ = false;
   }
   catch (const std::exception& ex)
   {
@@ -212,14 +270,31 @@ std::vector<hardware_interface::StateInterface>
 Kortex3HardwareInterface::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
+  std::vector<string> arm_joint_names;
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
-    state_interfaces.emplace_back(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &joint_positions_[i]);
-    state_interfaces.emplace_back(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &joint_velocities_[i]);
-    state_interfaces.emplace_back(
-      info_.joints[i].name, hardware_interface::HW_IF_EFFORT, &joint_torques_[i]);
+    RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
+    if (info_.joints[i].name == gripper_joint_name_)
+    {
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_position_));
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_velocity_));
+    }
+    else
+    {
+      arm_joint_names.emplace_back(info_.joints[i].name);
+    }
+  }
+
+  for (std::size_t i = 0; i < arm_joint_names.size(); i++)
+  {  
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      arm_joint_names[i], hardware_interface::HW_IF_POSITION, &joint_positions_[i]));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_[i]));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+      arm_joint_names[i], hardware_interface::HW_IF_EFFORT, &joint_torques_[i]));
   }
   return state_interfaces;
 }
@@ -228,10 +303,24 @@ std::vector<hardware_interface::CommandInterface>
 Kortex3HardwareInterface::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
+  std::vector<string> arm_joint_names;
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
-    command_interfaces.emplace_back(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &joint_velocities_cmd_[i]);
+    if (info_.joints[i].name == gripper_joint_name_)
+    {
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_command_position_));
+    }
+    else
+    {
+      arm_joint_names.emplace_back(info_.joints[i].name);
+    }
+  }
+  
+  for (std::size_t i = 0; i < arm_joint_names.size(); i++)
+  {
+    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+      arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_cmd_[i]));
   }
   return command_interfaces;
 }
@@ -239,6 +328,9 @@ Kortex3HardwareInterface::export_command_interfaces()
 hardware_interface::return_type Kortex3HardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+
+  // read gripper state
+  readGripperPosition();
   try {
     auto feedback = base_cyclic_udp_->RefreshFeedback();
 
@@ -307,6 +399,64 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
   return hardware_interface::return_type::OK;
 }
 
+std::optional<double> Kortex3HardwareInterface::readGripperPosition()
+{
+  // 1) Rate-limit BEFORE touching the mutex
+  const auto now = std::chrono::steady_clock::now();
+  if (now < next_gripper_poll_) {
+    return gripper_position_;  // return cached value
+  }
+
+  // 2) Try to acquire the mutex without blocking the control loop
+  std::unique_lock<std::mutex> lk(gripper_mtx_, std::try_to_lock);
+  if (!lk.owns_lock()) {
+    // Another Modbus op in-flight; try again soon without blocking
+    next_gripper_poll_ = now + std::chrono::milliseconds(10);
+    return gripper_position_;
+  }
+
+  // 3) Lazy init once
+  if (!gripper_initialized_) {
+    constexpr uint16_t gripper_slave_id = 9;
+    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
+
+    if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
+      RCLCPP_WARN(LOGGER, "Modbus init failed; will retry later.");
+      next_gripper_poll_ = now + gripper_poll_period_;
+      return std::nullopt;
+    }
+
+    gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
+    gripper_initialized_ = true;
+  }
+
+  // 4) Read once; if it fails, reconnect and retry once (no sleeps)
+  bool ok = gripper_->ReadRegister();
+  if (!ok) {
+    RCLCPP_WARN(LOGGER, "ReadRegister() failed; reconnecting and retrying once");
+    modbus_wrapper_->CloseConnection();
+    if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+      ok = gripper_->ReadRegister();
+    }
+  }
+
+  // Set next poll time regardless, so we don’t hammer on failures
+  next_gripper_poll_ = now + gripper_poll_period_;
+
+  if (!ok) {
+    return std::nullopt;
+  }
+
+  // 5) Decode & cache
+  const uint8_t raw = gripper_->GetPosition();
+  gripper_position_ = static_cast<double>(raw) / 255.0 * 0.81;  // rad
+  std::cout << "Gripper position: " << gripper_position_ << std::endl;
+  return gripper_position_;
+}
+
+
+
+
 hardware_interface::return_type Kortex3HardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
@@ -339,8 +489,55 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     in_fault_ = true;
     return hardware_interface::return_type::ERROR;
   }
+
+  //Gripper command
+  sendGripperCommand(gripper_command_position_);
+
   return hardware_interface::return_type::OK;
 }
+
+void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
+{
+  // --- Gate BEFORE locking to avoid needless contention ---
+  const auto now = std::chrono::steady_clock::now();
+
+  // Limit command rate
+  if (now < next_gripper_send_) return;
+
+  // Clamp into stroke and skip tiny, redundant updates
+  const double clamped = std::clamp(position_radians, 0.0, 0.81);
+  if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
+      std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
+  {
+    return;
+  }
+
+  // --- Serialize Modbus access ---
+  std::lock_guard<std::mutex> lk(gripper_mtx_);
+  if (!gripper_initialized_ || !gripper_) return;
+
+  const uint8_t pos = static_cast<uint8_t>((clamped / 0.81) * 255.0);
+
+  // Best-effort write sequence (no sleeps, no loop blocking)
+  gripper_->ClearGoToRequest();
+  (void)gripper_->SendRequest();
+
+  gripper_->SetPositionRequest(pos);
+  gripper_->SetGoToRequest();
+  (void)gripper_->SendRequest();
+
+  // Optionally: quick reconnect + one retry if your API returns a bool
+  // if (!gripper_->SendRequest()) {
+  //   modbus_wrapper_->CloseConnection();
+  //   if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+  //     (void)gripper_->SendRequest();
+  //   }
+  // }
+
+  last_gripper_cmd_pos_ = clamped;
+  next_gripper_send_    = now + gripper_cmd_period_;
+}
+
 
 void Kortex3HardwareInterface::check_and_power_on_robot()
 {
