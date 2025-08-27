@@ -71,6 +71,11 @@
    See “ROS2 Integration” section here:  
    https://gazebosim.org/docs/fortress/ros_installation/
 
+3. Install wget:
+  ```bash
+  sudo apt update
+  sudo apt install wget -y
+  ```
 3. **Protobuf v3.20.3**  
    The Kortex API bindings require exactly Protobuf 3.20.3 and to install it from source please run the following commands:
    ```bash
@@ -149,7 +154,7 @@ git lfs pull
 3. Rearrange the directories:
 
 ```bash
-cd COLCON_WS
+cd $COLCON_WS
 mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
 ```
 
