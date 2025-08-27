@@ -72,11 +72,21 @@
    https://gazebosim.org/docs/fortress/ros_installation/
 
 3. **Protobuf v3.20.3**  
-   The Kortex API bindings require exactly Protobuf 3.20.3.
-
+   The Kortex API bindings require exactly Protobuf 3.20.3 and to install it from source please run the following commands:
    ```bash
-   sudo apt install libprotobuf-dev=3.20.3-1  protobuf-compiler=3.20.3-1
+   cd /tmp
+   wget https://github.com/protocolbuffers/protobuf/releases/download/v3.20.3/protobuf-cpp-3.20.3.tar.gz
+   tar -xzf protobuf-cpp-3.20.3.tar.gz
+   cd protobuf-3.20.3
+   ./configure --prefix=/usr/local
+   make -j$(nproc)
+   sudo make install
+   sudo ldconfig
    ```
+  Finally the installed protobuf version can be verified using the following command:
+  ```bash
+  /usr/local/bin/protoc --version
+  ```
 
 ### 4.2 Robot Setup
 
@@ -106,7 +116,12 @@
 ---
 
 ## 5. Installation
-
+Install git-lfs to retrieve the kortex 3 library from the pointer:
+```bash
+sudo apt update
+sudo apt install git-lfs
+git lfs install
+```
 ### 5.1 Workspace Layout
 
 #### 5.1.1 Create & enter your workspace
@@ -119,19 +134,40 @@ cd    $COLCON_WS/src
 
 #### 5.1.2 Lay out your `src/` directory
 
-Make sure you’ve placed your Link6 packages here:
+1. Clone this repository:
+
+```bash
+git clone https://github.com/Kinovarobotics/ros2_kortex3.git
+```
+2. Retrieve the kortex 3 library:
+
+```bash
+cd ros2_kortex3
+git lfs pull
+```
+
+3. Rearrange the directories:
+
+```bash
+cd COLCON_WS
+mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
+```
+
+At this point, your directories tree should looks as follows:
 
 ```
 link6_ws/
 └── src/
-    ├── link6_description/
-    ├── link6_control/
-    ├── link6_bringup/
+    ├── doc/
     ├── kortex3_hardware/
-    └── cartesian_controllers/  <-- we’ll clone this next
+    ├── link6_bringup/
+    ├── link6_control/
+    ├── link6_description/
+    ├── LICENSE
+    └── README.md
 ```
 
-### 5.2 Clone Repositories
+### 5.2 Clone Additional Repositories
 
 ```bash
 cd $COLCON_WS/src
@@ -149,7 +185,9 @@ sudo apt install \
   python3-rosdep \
   python3-colcon-clean \
   ros-humble-gz-ros2-control \
-  ros-humble-gz-ros2-control-demos
+  ros-humble-gz-ros2-control-demos \
+  ros-humble-gripper-controllers
+
 ```
 
 #### 5.3.2 Package Dependencies
@@ -165,7 +203,7 @@ rosdep install --ignore-src --from-paths src -r -y
 #### 5.4.1 Build
 
 ```bash
-colcon build 
+colcon build --packages-skip cartesian_controller_simulation cartesian_controller_tests --cmake-args -DCMAKE_BUILD_TYPE=Release
 ```
 
 #### 5.4.2 Source
@@ -185,7 +223,7 @@ source ~/.bashrc
 
 #### 6.1.1 Real Hardware
 
-**Real robot**
+To bringup a real life Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
 ros2 launch link6_bringup real_robot.launch.py
@@ -213,6 +251,7 @@ By default our `controller_manager` brings up:
 | **joint\_state\_broadcaster**     | `joint_state_broadcaster/JointStateBroadcaster`         | Publish all joint states         | `/joint_states` (sensor\_msgs/JointState)                 |
 | **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (Float64MultiArray) |
 | **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_pose` (PoseStamped)  |
+| **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `control_msgs/action/GripperCommand` (Action Interface)  |
 | **motion\_control\_handle**       | `cartesian_controller_handles/MotionControlHandle`      | RViz interactive‑marker handle   | —                                                         |
 
 #### 6.2.1 Listing & Switching Controllers
@@ -269,6 +308,27 @@ std\_msgs/msg/Float64MultiArray "{ data: \[0, 0, 0, 0, 0, 0.1] }" -r 1
 
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
+
+#### 6.2.4 Robotiq Gripper Controller (For Real-Life Control Only)
+> **Use‑case:** control of the opening/closing of a mounted robotiq gripper
+> **Type:** `position_controllers/GripperActionController`
+
+0. Before commanding the gripper, please make sure to use the webapp to install the robotiq_plugin, add the gripper to the list of active tools and activate the gripper using a custom program each time the robot is turned on.
+
+1. Fully open the gripper:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
+```
+
+2. Fully close the gripper:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.81, max_effort: 100.0}}"
+```
+
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
+```
 
 ### 6.3 Testing Tools
 
@@ -535,3 +595,4 @@ This package implements the ROS2 Control configurations that are used by the Kor
 ## Authors
 
 - Anas Houssaini — Hardware Interface, initial development and ROS2 integration  
+- Abed Al Rahman Al Mrad - Robotiq gripper integration

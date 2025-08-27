@@ -450,7 +450,7 @@ std::optional<double> Kortex3HardwareInterface::readGripperPosition()
   // 5) Decode & cache
   const uint8_t raw = gripper_->GetPosition();
   gripper_position_ = static_cast<double>(raw) / 255.0 * 0.81;  // rad
-  std::cout << "Gripper position: " << gripper_position_ << std::endl;
+  //std::cout << "Gripper position: " << gripper_position_ << std::endl;
   return gripper_position_;
 }
 
