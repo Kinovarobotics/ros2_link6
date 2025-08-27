@@ -2,7 +2,6 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     OpaqueFunction,
@@ -17,7 +16,6 @@ from launch.substitutions import (
     PathJoinSubstitution,
     PythonExpression,
 )
-from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
@@ -112,6 +110,12 @@ def generate_launch_description():
         arguments=["motion_control_handle",  "--inactive", "--controller-manager-timeout", "300"],
     )
 
+    robot_hand_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"]
+    )
+
     topic_relay = Node(
         package="topic_tools",
         executable="relay",
@@ -122,7 +126,6 @@ def generate_launch_description():
         output="screen",
     )
 
-
     return LaunchDescription([
         robot_state_publisher_node,
         tf,
@@ -131,5 +134,6 @@ def generate_launch_description():
         cartesian_motion_controller_spawner,
         motion_control_handle_spawner,
         joint_velocity_controller_spawner,
+        robot_hand_controller_spawner,
         topic_relay,
     ])
