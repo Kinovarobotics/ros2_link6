@@ -168,16 +168,25 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
+    ├── ros2_kortex3.repos
     ├── LICENSE
     └── README.md
 ```
 
 ### 5.2 Clone Additional Repositories
 
-```bash
-cd $COLCON_WS/src
-git clone https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git
-```
+1. Make sure that `vcs` is installed:
+  ```
+  sudo apt install python3-vcstool
+  ```
+2. Pull the relevant packages:
+  ```bash
+  cd $COLCON_WS
+  vcs import src --skip-existing --input src/ros2_kortex/ros2_kortex.$ROS_DISTRO.repos
+  git clone 
+  ```
+
+2. 
 
 ### 5.3 Dependencies
 
