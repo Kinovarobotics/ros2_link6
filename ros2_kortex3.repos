@@ -1,0 +1,9 @@
+repositories:
+  cartesian_controllers:
+    type: git
+    url: https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git
+    version: ros2
+  ros2_robotiq_gripper:
+    type: git
+    url: https://github.com/aalmrad/ros2_robotiq_gripper.git
+    version: main
