@@ -168,22 +168,21 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
-    ├── ros2_kortex3.repos
+    ├── ros2_kortex3.humble.repos
     ├── LICENSE
     └── README.md
 ```
 
 ### 5.2 Clone Additional Repositories
 
-1. Make sure that `vcs` is installed:
+1. If not already done, make sure that `vcs` is installed:
   ```
   sudo apt install python3-vcstool
   ```
 2. Pull the relevant packages:
   ```bash
   cd $COLCON_WS
-  vcs import src --skip-existing --input src/ros2_kortex/ros2_kortex.$ROS_DISTRO.repos
-  git clone 
+  vcs import src --skip-existing --input src/ros2_kortex3.$ROS_DISTRO.repos
   ```
 
 2. 
