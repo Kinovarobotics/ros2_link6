@@ -239,6 +239,11 @@ source ~/.bashrc
 To bringup a real life Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+```
+
+To bringup the arm without any mounted gripper, use the following:
+```bash
 ros2 launch link6_bringup real_robot.launch.py
 ```
 

@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <robot name="link6" xmlns:xacro="http://ros.org/wiki/xacro">
-
+    <!-- Arguments -->
+    <xacro:arg name="gripper" default="" />
 
     <xacro:include filename="$(find link6_description)/urdf/link6_calibrated.xacro" />
 
-
     <xacro:include filename="$(find link6_description)/urdf/kortex3.ros2control.xacro" />
+
+    <xacro:load_robot gripper="$(arg gripper)"/>
+
 </robot>
