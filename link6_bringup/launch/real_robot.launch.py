@@ -18,11 +18,9 @@ from launch.substitutions import (
 )
 from launch_ros.substitutions import FindPackageShare
 
-def generate_launch_description():
-
-
-
-
+def launch_setup(context, *args, **kwargs):
+    #Initialize Arguments
+    gripper = LaunchConfiguration("gripper")
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -31,6 +29,10 @@ def generate_launch_description():
                 [FindPackageShare("link6_description"), "urdf", "link6.xacro"]
             ),
             " ",
+            "gripper:=", 
+            gripper,
+            " ",
+
 
         ]
     )
@@ -126,7 +128,7 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription([
+    nodes_to_start = [
         robot_state_publisher_node,
         tf,
         controller_manager,
@@ -134,6 +136,19 @@ def generate_launch_description():
         cartesian_motion_controller_spawner,
         motion_control_handle_spawner,
         joint_velocity_controller_spawner,
-        robot_hand_controller_spawner,
         topic_relay,
-    ])
+    ]
+    if gripper.perform(context) != "":
+        nodes_to_start.append(robot_hand_controller_spawner)
+    return nodes_to_start
+
+def generate_launch_description():
+    declared_arguments = []
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper",
+            default_value="",
+            description="Name of the gripper attached to the arm",
+        )
+    )
+    return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])
