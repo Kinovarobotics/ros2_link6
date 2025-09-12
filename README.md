@@ -325,7 +325,7 @@ ros2 topic pub --once /cartesian\_motion\_controller/target\_pose geometry\_msgs
    ```bash
    ros2 topic pub /joint/velocity/controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
    ```
-    
+   
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
 
