@@ -251,6 +251,13 @@ ros2 launch link6_bringup real_robot.launch.py
 
 **Simulation (Ignition/Gazebo Fortress)**
 
+To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
+
+```bash
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+```
+To bringup the simulated arm without any mounted gripper, use the following:
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
 ros2 launch link6_bringup sim_robot.launch.py
@@ -325,9 +332,12 @@ std\_msgs/msg/Float64MultiArray "{ data: \[0, 0, 0, 0, 0, 0.1] }" -r 1
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
 
-#### 6.2.4 Robotiq Gripper Controller (For Real-Life Control Only)
+#### 6.2.4 Robotiq Gripper Controller
 > **Use‑case:** control of the opening/closing of a mounted robotiq gripper
+
 > **Type:** `position_controllers/GripperActionController`
+
+#### Real-life Control:
 
 0. Before commanding the gripper, please make sure to use the webapp to install the robotiq_plugin, add the gripper to the list of active tools and activate the gripper using a custom program each time the robot is turned on.
 
@@ -339,6 +349,23 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 2. Fully close the gripper:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.81, max_effort: 100.0}}"
+```
+
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
+```
+
+#### Simulation Control:
+
+1. Fully open the gripper:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.1, max_effort: 100.0}}"
+```
+
+2. Fully close the gripper:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.7, max_effort: 100.0}}"
 ```
 
 3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
