@@ -2,14 +2,16 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch.conditions import IfCondition
 
 
 def generate_launch_description():
 
-
+    #Initialize Arguments
+    gripper = LaunchConfiguration("gripper")
     use_sim_time = LaunchConfiguration("use_sim_time", default="true")
     gui          = LaunchConfiguration("gui",          default="true")
     gz_args      = LaunchConfiguration("gz_args",      default="-r -v 2 empty.sdf")
@@ -22,6 +24,10 @@ def generate_launch_description():
                 PathJoinSubstitution(
                     [FindPackageShare("link6_description"), "urdf", "link6_gz.urdf.xacro"]
                 ),
+                " ",
+                "gripper:=", 
+                gripper,
+                " ",
             ]
         )
     }
@@ -29,7 +35,7 @@ def generate_launch_description():
 
     robot_controllers = PathJoinSubstitution(
         [FindPackageShare("link6_control"),
-         "config", "kortex3_controllers.yaml"]
+         "config", "kortex3_sim_controllers.yaml"]
     )
 
 
@@ -99,6 +105,13 @@ def generate_launch_description():
         output="screen",
     )
 
+    robot_hand_controller_spawner = Node(
+    package="controller_manager",
+    executable="spawner",
+    arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"],
+    condition=IfCondition(PythonExpression(["'", gripper, "' != ''"])),
+    )
+
 
     topic_relay = Node(
         package="topic_tools",
@@ -126,6 +139,7 @@ def generate_launch_description():
                 velocity_controller, 
                 cartesian_motion_controller_spawner,
                 motion_control_handle_spawner,
+                robot_hand_controller_spawner,
             ],
         )
     )
@@ -145,6 +159,7 @@ def generate_launch_description():
     ld.add_action(DeclareLaunchArgument("use_sim_time", default_value="true"))
     ld.add_action(DeclareLaunchArgument("gui",          default_value="true"))
     ld.add_action(DeclareLaunchArgument("gz_args",      default_value="-r -v 2 empty.sdf"))
+    ld.add_action(DeclareLaunchArgument("gripper", default_value=""))
 
     ld.add_action(gazebo)
     ld.add_action(rsp)
