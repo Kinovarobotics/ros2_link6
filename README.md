@@ -311,7 +311,7 @@ ros2 control switch_controllers \
 2. **Send target pose**:
 
 ```bash
-ros2 topic pub --once /cartesian\_motion\_controller/target\_pose geometry\_msgs/msg/PoseStamped "{header: {frame\_id: 'base\_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
+ros2 topic pub --once /cartesian/motion/controller/target/pose geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
 ```
 
 #### 6.2.3 Joint Velocity Controller
