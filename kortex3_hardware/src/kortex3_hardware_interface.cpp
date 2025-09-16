@@ -153,10 +153,10 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     }
 
     // 5. Generate and load robot calibration.
-    if (!calibrate_robot())
-    {
-        RCLCPP_WARN(LOGGER, "Calibration generation failed; using nominal model.");
-    }
+    // if (!calibrate_robot())
+    // {
+    //     RCLCPP_WARN(LOGGER, "Calibration generation failed; using nominal model.");
+    // }
 
     // 6. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
