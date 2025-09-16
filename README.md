@@ -623,14 +623,12 @@ This package implements the ROS2 Control configurations that are used by the Kor
 - Joint Position Controller
 - Add End Effector Impedance Control
 - Add tool management
-- Add gripper plug-in management (ex: command grippers)
 - Automated calibration of the Torque/Force sensor
 
 ## Limitations
 
 - Verify communication delays. 
 - Reading over UDP and writing over MQTT (max 500 hz). However, ROS2 Control Cycle is set at the link6_control/config/kortex_control.yaml 
-
 
 ## Authors
 
