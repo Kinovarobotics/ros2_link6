@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="link6">
+
+    <!-- Arguments -->
+    <xacro:arg name="robot_ip" default="192.168.1.10" />
+    <xacro:arg name="username" default="admin" />
+    <xacro:arg name="password" default="admin" />
+    <xacro:arg name="port" default="10000" />
+    <xacro:arg name="port_realtime" default="10001" />
+    <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
+    <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
+    <xacro:arg name="gripper" default="" />
+    <xacro:arg name="gripper_joint_name" default="finger_joint" />
+    <xacro:arg name="gripper_max_velocity" default="100.0" />
+    <xacro:arg name="gripper_max_force" default="100.0" />
+    <xacro:arg name="sim_gazebo" default="false" />
+    <xacro:arg name="prefix" default="" />
+    <xacro:arg name="use_fake_hardware" default="false" />
+    <xacro:arg name="fake_sensor_commands" default="false" />
+    <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
+    <xacro:arg name="use_external_cable" default="false" />
+
+    <xacro:include filename="$(find link6_description)/urdf/link6_macro.xacro" />
+    <!-- initial position for simulations (Mock Hardware, Gazebo) -->
+    <xacro:arg name="initial_positions_file"
+        default="$(find link6_description)/config/initial_positions.yaml" />
+    <!-- convert to property to use substitution in function -->
+    <xacro:property name="initial_positions_file" default="$(arg initial_positions_file)" />
+
+    <link name="world" />
+    <joint name="world_joint" type="fixed">
+        <parent link="world" />
+        <child link="table" />
+        <origin xyz="0 0 1.0" rpy="0 0 0" />
+    </joint>
+
+    <link name="table">
+        <visual>
+            <origin xyz="0 0 -0.02" rpy="0 0 0" />
+            <geometry>
+                <box size="1.0 1.0 0.04" />
+            </geometry>
+            <material name="white">
+                <color rgba="1 1 1 1.0" />
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 -0.02" rpy="0 0 0" />
+            <geometry>
+                <box size="1.0 1.0 0.04" />
+            </geometry>
+        </collision>
+    </link>
+
+    <xacro:link6
+        parent="table"
+        prefix="$(arg prefix)"
+        gripper="$(arg gripper)"
+        robot_ip="$(arg robot_ip)"
+        username="$(arg username)"
+        password="$(arg password)"
+        use_fake_hardware="$(arg use_fake_hardware)"
+        fake_sensor_commands="$(arg fake_sensor_commands)"
+        sim_gazebo="$(arg sim_gazebo)"
+        initial_positions="${xacro.load_yaml(initial_positions_file)}">
+        <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
+    </xacro:link6>
+
+    <xacro:if value="$(arg sim_gazebo)">
+        <gazebo>
+            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+                <parameters>$(find link6_control)/config/kortex3_controllers.yaml</parameters>
+                <controller_manager_node_name>controller_manager</controller_manager_node_name>
+            </plugin>
+        </gazebo>
+    </xacro:if>
+</robot>

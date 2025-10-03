@@ -10,34 +10,53 @@ from launch.conditions import IfCondition
 
 def generate_launch_description():
 
-    #Initialize Arguments
+    # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
-    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
-    gui          = LaunchConfiguration("gui",          default="true")
-    gz_args      = LaunchConfiguration("gz_args",      default="-r -v 2 empty.sdf")
+    gui = LaunchConfiguration("gui")
+    gz_args = LaunchConfiguration("gz_args")
 
+    gripper_arg = DeclareLaunchArgument(
+        "gripper",      
+        default_value="",
+        description='Name of the gripper attached to the arm (empty for no gripper).'
+    )
+
+    gui_arg = DeclareLaunchArgument(
+        'gui',
+        default_value='true',
+        description='Whether to run the Gazebo GUI.'
+    )
+
+    gaz_args_arg = DeclareLaunchArgument(
+        "gz_args",      
+        default_value="-r -v 2 empty.sdf",
+        description='Arguments to pass to Gazebo.'
+    )
+
+
+    # Create the launch actions
     robot_description = {
         "robot_description": Command(
             [
                 PathJoinSubstitution([FindExecutable(name="xacro")]),
                 " ",
                 PathJoinSubstitution(
-                    [FindPackageShare("link6_description"), "urdf", "link6_gz.urdf.xacro"]
+                    [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
                 ),
                 " ",
                 "gripper:=", 
                 gripper,
                 " ",
+                "sim_gazebo:=true",
+                " ",
             ]
         )
     }
 
-
     robot_controllers = PathJoinSubstitution(
         [FindPackageShare("link6_control"),
-         "config", "kortex3_sim_controllers.yaml"]
+         "config", "kortex3_controllers.yaml"]
     )
-
 
     gazebo = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -50,7 +69,6 @@ def generate_launch_description():
         }.items(),
     )
 
-
     spawn = Node(
         package    = "ros_gz_sim",
         executable = "create",
@@ -62,13 +80,12 @@ def generate_launch_description():
         ],
     )
 
-    rsp = Node(
+    robot_state_publisher_node = Node(
         package    = "robot_state_publisher",
         executable = "robot_state_publisher",
         output     = "screen",
-        parameters = [robot_description, {"use_sim_time": use_sim_time}],
+        parameters = [robot_description, {"use_sim_time": True}],
     )
-
 
     js_broadcaster = Node(
         package    = "controller_manager",
@@ -77,7 +94,6 @@ def generate_launch_description():
                       "--log-level", "WARN"],
         output     = "screen",
     )
-
 
     velocity_controller = Node(
         package    = "controller_manager",
@@ -91,10 +107,25 @@ def generate_launch_description():
         output     = "screen",
     )
 
+    joint_trajectory_controller = Node(
+        package    = "controller_manager",
+        executable = "spawner",
+        arguments  = [
+            "joint_trajectory_controller",
+            "--param-file", robot_controllers,
+            "--controller-manager", "/controller_manager"
+        ],
+        output     = "screen",
+    )
+
     cartesian_motion_controller_spawner = Node(
         package    = "controller_manager",
         executable = "spawner",
-        arguments=["cartesian_motion_controller", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "cartesian_motion_controller", 
+            "--controller-manager", 
+            "/controller_manager",
+            "--inactive"],
         output     = "screen",
     )
 
@@ -106,12 +137,11 @@ def generate_launch_description():
     )
 
     robot_hand_controller_spawner = Node(
-    package="controller_manager",
-    executable="spawner",
-    arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"],
-    condition=IfCondition(PythonExpression(["'", gripper, "' != ''"])),
+        package="controller_manager",
+        executable="spawner",
+        arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"],
+        condition=IfCondition(PythonExpression(["'", gripper, "' != ''"])),
     )
-
 
     topic_relay = Node(
         package="topic_tools",
@@ -121,9 +151,8 @@ def generate_launch_description():
             "/cartesian_motion_controller/target_frame",
         ],
         output="screen",
-        parameters=[{"use_sim_time": use_sim_time}], 
+        parameters=[{"use_sim_time": True}], 
     )
-
 
     load_js_after_spawn = RegisterEventHandler(
         OnProcessExit(
@@ -136,7 +165,8 @@ def generate_launch_description():
         OnProcessExit(
             target_action = js_broadcaster,
             on_exit=[
-                velocity_controller, 
+                velocity_controller,
+                joint_trajectory_controller, 
                 cartesian_motion_controller_spawner,
                 motion_control_handle_spawner,
                 robot_hand_controller_spawner,
@@ -144,31 +174,27 @@ def generate_launch_description():
         )
     )
 
-
     clock_bridge = Node(
         package    = "ros_gz_bridge",
         executable = "parameter_bridge",
         arguments  = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
         output     = "screen",
-        parameters = [{"use_sim_time": use_sim_time}],
+        parameters = [{"use_sim_time": True}],
     )
 
-
+    # Create the launch description and populate
     ld = LaunchDescription()
 
-    ld.add_action(DeclareLaunchArgument("use_sim_time", default_value="true"))
-    ld.add_action(DeclareLaunchArgument("gui",          default_value="true"))
-    ld.add_action(DeclareLaunchArgument("gz_args",      default_value="-r -v 2 empty.sdf"))
-    ld.add_action(DeclareLaunchArgument("gripper", default_value=""))
+    ld.add_action(gripper_arg)
+    ld.add_action(gui_arg)
+    ld.add_action(gaz_args_arg)
 
     ld.add_action(gazebo)
-    ld.add_action(rsp)
+    ld.add_action(robot_state_publisher_node)
     ld.add_action(spawn)
     ld.add_action(load_js_after_spawn)
     ld.add_action(load_controllers_after_js) 
     ld.add_action(clock_bridge)
-
-
     ld.add_action(topic_relay)
 
     return ld
