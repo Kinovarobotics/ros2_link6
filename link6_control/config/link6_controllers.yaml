@@ -86,12 +86,14 @@ motion_control_handle:
 
 robotiq_gripper_controller:
   ros__parameters:
+    type: position_controllers/GripperActionController
     default: true
     joint: link6_robotiq_85_left_knuckle_joint
     allow_stalling: true
 
 joint_trajectory_controller:
   ros__parameters:
+    type: joint_trajectory_controller/JointTrajectoryController
     joints:
       - link6_joint_1
       - link6_joint_2

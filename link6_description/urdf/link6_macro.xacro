@@ -453,7 +453,7 @@
         prefix="${prefix}"
         use_fake_hardware="${use_fake_hardware}"
         fake_sensor_commands="${fake_sensor_commands}"
-        include_ros2_control="true"
+        include_ros2_control="false"
         com_port="${gripper_com_port}"
         sim_ignition="${sim_gazebo}">
         <origin xyz="0 0 0" rpy="0 0 0" />

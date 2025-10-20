@@ -25,13 +25,13 @@ def generate_launch_description():
     )
 
     # Create the launch actions
-    robot_description = {
+    robot_description_content = {
         "robot_description": Command(
             [
                 PathJoinSubstitution([FindExecutable(name="xacro")]),
                 " ",
                 PathJoinSubstitution(
-                    [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
+                    [FindPackageShare("link6_description"), "urdf", "link6.xacro"]
                 ),
                 " ",
                 "gripper:=", 
@@ -41,7 +41,7 @@ def generate_launch_description():
         )
     }
 
-    robot_description = {'robot_description': robot_description}
+    robot_description = robot_description_content
 
 
     controller_config = os.path.join(
@@ -91,6 +91,17 @@ def generate_launch_description():
         output="screen",
     )
 
+    joint_trajectory_controller = Node(
+        package    = "controller_manager",
+        executable = "spawner",
+        parameters = [{"use_sim_time": True}],
+        arguments  = [
+            "joint_trajectory_controller",
+            "--param-file", controller_config,
+            "--controller-manager", "/controller_manager"
+        ],
+        output     = "screen",
+    )
 
     joint_velocity_controller_spawner = Node(
         package="controller_manager",
@@ -140,10 +151,11 @@ def generate_launch_description():
     ld.add_action(static_transform_node)
     ld.add_action(controller_manager)
     ld.add_action(joint_state_broadcaster_spawner)
-    ld.add_action(cartesian_motion_controller_spawner)
-    ld.add_action(motion_control_handle_spawner)
-    ld.add_action(joint_velocity_controller_spawner)
-    ld.add_action(topic_relay)
+    ld.add_action(joint_trajectory_controller)
+    # ld.add_action(cartesian_motion_controller_spawner)
+    # ld.add_action(motion_control_handle_spawner)
+    # ld.add_action(joint_velocity_controller_spawner)
+    # ld.add_action(topic_relay)
 
     if gripper != "":
         ld.add_action(robot_hand_controller_spawner)

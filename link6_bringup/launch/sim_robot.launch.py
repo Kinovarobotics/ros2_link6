@@ -90,6 +90,7 @@ def generate_launch_description():
     js_broadcaster = Node(
         package    = "controller_manager",
         executable = "spawner",
+        parameters = [{"use_sim_time": True}],
         arguments  = ["joint_state_broadcaster", "--controller-manager", "/controller_manager",  "--ros-args",
                       "--log-level", "WARN"],
         output     = "screen",
@@ -98,6 +99,7 @@ def generate_launch_description():
     velocity_controller = Node(
         package    = "controller_manager",
         executable = "spawner",
+        parameters = [{"use_sim_time": True}],
         arguments  = [
             "joint_velocity_controller",
             "--param-file", robot_controllers,
@@ -110,6 +112,7 @@ def generate_launch_description():
     joint_trajectory_controller = Node(
         package    = "controller_manager",
         executable = "spawner",
+        parameters = [{"use_sim_time": True}],
         arguments  = [
             "joint_trajectory_controller",
             "--param-file", robot_controllers,
@@ -121,6 +124,7 @@ def generate_launch_description():
     cartesian_motion_controller_spawner = Node(
         package    = "controller_manager",
         executable = "spawner",
+        parameters = [{"use_sim_time": True}],
         arguments=[
             "cartesian_motion_controller", 
             "--controller-manager", 
@@ -132,6 +136,7 @@ def generate_launch_description():
     motion_control_handle_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        parameters = [{"use_sim_time": True}],
         arguments=["motion_control_handle", "--inactive", "--controller-manager", "/controller_manager"],
         output="screen",
     )
@@ -139,6 +144,7 @@ def generate_launch_description():
     robot_hand_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        parameters = [{"use_sim_time": True}],
         arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"],
         condition=IfCondition(PythonExpression(["'", gripper, "' != ''"])),
     )
@@ -165,10 +171,10 @@ def generate_launch_description():
         OnProcessExit(
             target_action = js_broadcaster,
             on_exit=[
-                velocity_controller,
+                # velocity_controller,
                 joint_trajectory_controller, 
-                cartesian_motion_controller_spawner,
-                motion_control_handle_spawner,
+                # cartesian_motion_controller_spawner,
+                # motion_control_handle_spawner,
                 robot_hand_controller_spawner,
             ],
         )
