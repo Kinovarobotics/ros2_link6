@@ -14,6 +14,9 @@ controller_manager:
     motion_control_handle:
       type: cartesian_controller_handles/MotionControlHandle
 
+    robotiq_gripper_controller:
+      type: position_controllers/GripperActionController
+
     left_robotiq_gripper_controller:
       type: position_controllers/GripperActionController
 
@@ -96,9 +99,17 @@ right_robotiq_gripper_controller:
 
 left_robotiq_gripper_controller:
   ros__parameters:
+    type: position_controllers/GripperActionController
     default: true
     joint: link6_left_robotiq_85_left_knuckle_joint
     allow_stalling: false
+
+robotiq_gripper_controller:
+  ros__parameters:
+    type: position_controllers/GripperActionController
+    default: true
+    joint: link6_robotiq_85_left_knuckle_joint
+    allow_stalling: true
 
 joint_trajectory_controller:
   ros__parameters:

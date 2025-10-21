@@ -447,6 +447,21 @@
 
     <!-- Include and load the gripper if defined -->
     <xacro:unless value="${not gripper}">
+      <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
+        <xacro:robotiq_gripper
+          name="RobotiqGripperHardwareInterface"
+          parent="${prefix}end_effector_link"
+          prefix="${prefix}"
+          use_fake_hardware="${use_fake_hardware}"
+          fake_sensor_commands="${fake_sensor_commands}"
+          include_ros2_control="false"
+          com_port="${gripper_com_port_left}"
+          sim_ignition="${sim_gazebo}">
+          <origin xyz="0 0 0" rpy="0 0 0" />
+        </xacro:robotiq_gripper>
+    </xacro:unless>
+
+    <!-- <xacro:unless value="${not gripper}">
       <xacro:include filename="$(find agri_harveyl_description)/urdf/double_gripper_macro.urdf.xacro" />
       <xacro:double_robotiq_gripper
         parent="${prefix}end_effector_link"
@@ -458,6 +473,6 @@
         com_port_right="${gripper_com_port_right}">
         <origin xyz="0 0 0" rpy="0 0 0" />
       </xacro:double_robotiq_gripper>
-    </xacro:unless>
+    </xacro:unless> -->
   </xacro:macro>
 </robot>
