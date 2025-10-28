@@ -7,19 +7,10 @@
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
-    
-    
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
     robot_ip
     username
     password
-    
-    
-    
-    
-    
-    
-    
     moveit_active:=false">
 
     <ros2_control name="${prefix}Kortex3Interface" type="system">
@@ -38,19 +29,6 @@
         </xacro:if>
         <xacro:unless value="${use_fake_hardware or sim_gazebo}">
           <xacro:unless value="${moveit_active}">
-            <!-- <plugin>kortex_driver/KortexMultiInterfaceHardware</plugin>
-            <param name="robot_ip">${robot_ip}</param>
-            <param name="username">${username}</param>
-            <param name="password">${password}</param>
-            <param name="port">${port}</param>
-            <param name="port_realtime">${port_realtime}</param>
-            <param name="session_inactivity_timeout_ms">${session_inactivity_timeout_ms}</param>
-            <param name="connection_inactivity_timeout_ms">${connection_inactivity_timeout_ms}</param>
-            <param name="tf_prefix">"${tf_prefix}"</param>
-            <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
-            <param name="gripper_joint_name">${gripper_joint_name}</param>
-            <param name="gripper_max_velocity">${gripper_max_velocity}</param>
-            <param name="gripper_max_force">${gripper_max_force}</param> -->
             <plugin>kortex3_driver/Kortex3HardwareInterface</plugin>
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
@@ -58,19 +36,6 @@
           </xacro:unless>
         </xacro:unless>
         <xacro:if value="${moveit_active}">
-          <!-- <plugin>kortex_driver/KortexMultiInterfaceHardware</plugin>
-          <param name="robot_ip">${robot_ip}</param>
-          <param name="username">${username}</param>
-          <param name="password">${password}</param>
-          <param name="port">${port}</param>
-          <param name="port_realtime">${port_realtime}</param>
-          <param name="session_inactivity_timeout_ms">${session_inactivity_timeout_ms}</param>
-          <param name="connection_inactivity_timeout_ms">${connection_inactivity_timeout_ms}</param>
-          <param name="tf_prefix">"${tf_prefix}"</param>
-          <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
-          <param name="gripper_joint_name">${gripper_joint_name}</param>
-          <param name="gripper_max_velocity">${gripper_max_velocity}</param>
-          <param name="gripper_max_force">${gripper_max_force}</param> -->
           <plugin>kortex3_driver/Kortex3HardwareInterface</plugin>
           <param name="robot_ip">${robot_ip}</param>
           <param name="username">${username}</param>
@@ -144,11 +109,14 @@
         <state_interface name="effort" />
       </joint>
 
-      <joint name="${prefix}robotiq_85_left_knuckle_joint">
+      <xacro:unless value="${sim_gazebo}">
+        <joint name="${prefix}robotiq_85_left_knuckle_joint">
           <command_interface name="position" />
-          <state_interface name="position"/>
-          <state_interface name="velocity"/>
-      </joint>
+          <state_interface name="position" />
+          <state_interface name="velocity" />
+        </joint>
+      </xacro:unless>
+
     </ros2_control>
   </xacro:macro>
 </robot>

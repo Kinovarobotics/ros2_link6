@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="double_robotiq_gripper">
+
+    <xacro:macro name="double_robotiq_gripper" params="
+        parent
+        prefix
+        *origin
+        use_fake_hardware:=false
+        fake_sensor_commands:=false
+        use_sim:=false
+        com_port_left:=/dev/ttyUSB0
+        com_port_right:=/dev/ttyUSB1">
+
+        <xacro:property name="PI" value="3.14159"/>
+
+        <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+
+        <link name="${prefix}double_gripper_base_link">
+            <visual>
+                <geometry>
+                    <box size="0.01 0.01 0.01"/>
+                </geometry>
+            </visual>
+            <collision>
+                <geometry>
+                    <sphere radius="0.02"/>
+                </geometry>
+            </collision>
+        </link>
+
+        <link name="${prefix}left_gripper_link"/>
+        <link name="${prefix}right_gripper_link"/>
+
+        <joint name="${prefix}double_gripper_base_joint" type="fixed">
+            <parent link="${parent}"/>
+            <child link="${prefix}double_gripper_base_link"/>
+            <xacro:insert_block name="origin" />
+        </joint>
+
+        <joint name="${prefix}left_gripper_joint" type="fixed">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${PI/4} 0.0"/>
+            <parent link="${prefix}double_gripper_base_link"/>
+            <child link="${prefix}left_gripper_link"/>
+        </joint>
+
+        <joint name="${prefix}right_gripper_joint" type="fixed">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${-PI/4} 0.0"/>
+            <parent link="${prefix}double_gripper_base_link"/>
+            <child link="${prefix}right_gripper_link"/>
+        </joint>
+
+        <!-- Include left gripper -->
+        <xacro:robotiq_gripper
+            name="LeftRobotiqGripperHardwareInterface"
+            prefix="${prefix}left_"
+            parent="${prefix}left_gripper_link"
+            use_fake_hardware="${use_fake_hardware}"
+            fake_sensor_commands="${fake_sensor_commands}"
+            include_ros2_control="${sim_gazebo}"
+            sim_ignition="${use_sim}"
+            com_port="${gripper_com_port_left}">
+            <origin xyz="0 0 0.5" rpy="0 0 0"/>
+        </xacro:robotiq_gripper>
+
+        <!-- Include right gripper -->
+        <xacro:robotiq_gripper
+            name="RightRobotiqGripperHardwareInterface"
+            prefix="${prefix}right_"
+            parent="${prefix}right_gripper_link"
+            use_fake_hardware="${use_fake_hardware}"
+            fake_sensor_commands="${fake_sensor_commands}"
+            include_ros2_control="${sim_gazebo}"
+            sim_ignition="${use_sim}"
+            com_port="${gripper_com_port_right}">
+            <origin xyz="0 0 0.5" rpy="0 0 0"/>
+        </xacro:robotiq_gripper>
+
+    </xacro:macro>
+</robot>

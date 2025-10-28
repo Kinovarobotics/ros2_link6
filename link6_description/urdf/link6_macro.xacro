@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <robot name="link6" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="link6"
-    params="
+  <xacro:macro name="link6" params="
     parent
     *origin
     prefix:=''
@@ -11,25 +9,13 @@
     robot_ip
     username:=admin
     password:=admin
-    
-    
-    
-    
-    
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
-    
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
-    
-    
     gripper_com_port_left:=/dev/ttyUSB0
     gripper_com_port_right:=/dev/ttyUSB1
     moveit_active:=false">
-
-    <!-- Available grippers defined here -->
-    <xacro:property name="available_grippers" value="['robotiq_2f_85', 'double_gripper']"/>
-    <xacro:property name="PI" value="3.14159"/>
 
     <!-- ros2 control include -->
     <xacro:include filename="$(find link6_description)/urdf/link6.ros2_control.xacro" />
@@ -437,23 +423,35 @@
       <child link="${prefix}end_effector_link" />
     </joint>
 
-    <!-- Include and load gripper logic based off of available grippers for link_6 -->
-    <xacro:if value="${gripper == 'robotiq_2f_85'}">
-      <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
-        <xacro:robotiq_gripper
-          name="robotiq_single_gripper"
-          parent="${prefix}end_effector_link"
-          prefix="${prefix}"
-          use_fake_hardware="${use_fake_hardware}"
-          fake_sensor_commands="${fake_sensor_commands}"
-          com_port="${gripper_com_port_left}"
-          sim_ignition="${sim_gazebo}">
-          <origin xyz="0 0 0.05" rpy="${PI/4} 0 0" />
-        </xacro:robotiq_gripper>
+    <!-- If no gripper, define tool frame here -->
+    <xacro:if value="${gripper == ''}">
+      <link name="${prefix}tool_frame" />
+      <joint name="${prefix}tool_frame_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <parent link="${prefix}end_effector_link" />
+        <child link="${prefix}tool_frame" />
+        <axis xyz="0 0 0" />
+      </joint>
     </xacro:if>
 
-    <xacro:if value="${gripper == 'double_gripper'}">
-      <xacro:include filename="$(find agri_harveyl_description)/urdf/double_gripper_macro.urdf.xacro" />
+    <!-- Include and load gripper based on available grippers for Link6 -->
+    <xacro:if value="${gripper == 'robotiq_2f_85'}">
+      <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
+      <xacro:robotiq_gripper
+        name="RobotiqGripperHardwareInterface"
+        parent="${prefix}end_effector_link"
+        prefix="${prefix}"
+        use_fake_hardware="${use_fake_hardware}"
+        fake_sensor_commands="${fake_sensor_commands}"
+        include_ros2_control="${sim_gazebo}"
+        com_port="${gripper_com_port_left}"
+        sim_ignition="${sim_gazebo}">
+        <origin xyz="0 0 0" rpy="0 0 0" />
+      </xacro:robotiq_gripper>
+    </xacro:if>
+
+    <xacro:if value="${gripper == 'double_robotiq'}">
+      <xacro:include filename="$(find link6_description)/urdf/double_robotiq_macro.urdf.xacro" />
       <xacro:double_robotiq_gripper
         parent="${prefix}end_effector_link"
         prefix="${prefix}"
@@ -466,15 +464,19 @@
       </xacro:double_robotiq_gripper>
     </xacro:if>
 
-    <!-- If no gripper, define tool frame here -->
-    <xacro:if value="${gripper == ''}">
-      <link name="${prefix}tool_frame" />
-      <joint name="${prefix}tool_frame_joint" type="fixed">
+    <xacro:if value="${gripper == 'double_robotiq_90'}">
+      <xacro:include filename="$(find link6_description)/urdf/double_robotiq_90_macro.urdf.xacro" />
+      <xacro:double_robotiq_gripper_90
+        parent="${prefix}end_effector_link"
+        prefix="${prefix}"
+        use_fake_hardware="${use_fake_hardware}"
+        fake_sensor_commands="${fake_sensor_commands}"
+        use_sim="${sim_gazebo}"
+        com_port_left="${gripper_com_port_left}"
+        com_port_right="${gripper_com_port_right}">
         <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="${prefix}end_effector_link" />
-        <child link="${prefix}tool_frame" />
-        <axis xyz="0 0 0" />
-      </joint>
+      </xacro:double_robotiq_gripper_90>
     </xacro:if>
+
   </xacro:macro>
 </robot>
