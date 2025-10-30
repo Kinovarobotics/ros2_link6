@@ -38,13 +38,13 @@
         </joint>
 
         <joint name="${prefix}left_gripper_joint" type="fixed">
-            <origin xyz="0.025 0.025 0.075" rpy="${PI/2} 0.0 ${PI/4}"/>
+            <origin xyz="-0.025 0.025 0.075" rpy="${PI/2} 0.0 ${-PI/4}"/>
             <parent link="${prefix}double_gripper_base_link"/>
             <child link="${prefix}left_gripper_link"/>
         </joint>
 
         <joint name="${prefix}right_gripper_joint" type="fixed">
-            <origin xyz="-0.025 0.025 0.075" rpy="${PI/2} 0.0 ${-PI/4}"/>
+            <origin xyz="0.025 0.025 0.075" rpy="${PI/2} 0.0 ${PI/4}"/>
             <parent link="${prefix}double_gripper_base_link"/>
             <child link="${prefix}right_gripper_link"/>
         </joint>
