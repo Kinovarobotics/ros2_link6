@@ -31,7 +31,7 @@ def generate_launch_description():
                 PathJoinSubstitution([FindExecutable(name="xacro")]),
                 " ",
                 PathJoinSubstitution(
-                    [FindPackageShare("link6_description"), "urdf", "link6.xacro"]
+                    [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
                 ),
                 " ",
                 "gripper:=", 
