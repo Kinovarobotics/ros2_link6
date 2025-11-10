@@ -38,13 +38,13 @@
         </joint>
 
         <joint name="${prefix}left_gripper_joint" type="fixed">
-            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${PI/4} 0.0"/>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${-PI/4} 0.0"/>
             <parent link="${prefix}double_gripper_base_link"/>
             <child link="${prefix}left_gripper_link"/>
         </joint>
 
         <joint name="${prefix}right_gripper_joint" type="fixed">
-            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${-PI/4} 0.0"/>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 ${PI/4} 0.0"/>
             <parent link="${prefix}double_gripper_base_link"/>
             <child link="${prefix}right_gripper_link"/>
         </joint>
@@ -59,7 +59,7 @@
             include_ros2_control="${sim_gazebo}"
             sim_ignition="${use_sim}"
             com_port="${gripper_com_port_left}">
-            <origin xyz="0 0 0.5" rpy="0 0 0"/>
+            <origin xyz="0 0 0.1" rpy="0 0 0"/>
         </xacro:robotiq_gripper>
 
         <!-- Include right gripper -->
@@ -72,7 +72,7 @@
             include_ros2_control="${sim_gazebo}"
             sim_ignition="${use_sim}"
             com_port="${gripper_com_port_right}">
-            <origin xyz="0 0 0.5" rpy="0 0 0"/>
+            <origin xyz="0 0 0.1" rpy="0 0 0"/>
         </xacro:robotiq_gripper>
 
     </xacro:macro>
