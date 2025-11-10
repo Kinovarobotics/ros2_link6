@@ -53,8 +53,9 @@ joint_velocity_controller:
 
 cartesian_motion_controller:
   ros__parameters:
+    type: cartesian_motion_controller/CartesianMotionController
     robot_base_link: "link6_base_link"
-    end_effector_link: "link6_end_effector_link"
+    end_effector_link: "link6_right_tool_frame"
     joints:
       - link6_joint_1
       - link6_joint_2
@@ -93,23 +94,26 @@ motion_control_handle:
 right_robotiq_gripper_controller:
   ros__parameters:
     type: position_controllers/GripperActionController
-    default: true
     joint: link6_right_robotiq_85_left_knuckle_joint
     allow_stalling: false
+    stall_timeout: 10.0
+    stall_velocity_threshold: 0.001
 
 left_robotiq_gripper_controller:
   ros__parameters:
     type: position_controllers/GripperActionController
-    default: true
     joint: link6_left_robotiq_85_left_knuckle_joint
     allow_stalling: false
+    stall_timeout: 10.0
+    stall_velocity_threshold: 0.001
 
 robotiq_gripper_controller:
   ros__parameters:
     type: position_controllers/GripperActionController
-    default: true
     joint: link6_robotiq_85_left_knuckle_joint
     allow_stalling: false
+    stall_timeout: 10.0
+    stall_velocity_threshold: 0.001
 
 joint_trajectory_controller:
   ros__parameters:
