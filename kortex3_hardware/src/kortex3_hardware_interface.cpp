@@ -20,7 +20,8 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     actuator_count_(6), // Default, updated from robot during activation.
     in_fault_(false),
     node_ptr_(nullptr),
-    gripper_joint_name_("")
+    gripper_joint_name_(""),
+    gripper2_joint_name_("")
 {
 }
 
@@ -39,6 +40,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   robot_ip_ = info_.hardware_parameters.at("robot_ip");
   username_ = info_.hardware_parameters.at("username");
   password_ = info_.hardware_parameters.at("password");
+  gripper_modbus_id_ = static_cast<uint16_t>(std::stoul(info_.hardware_parameters.at("gripper_modbus_id")));
   if (info_.hardware_parameters.count("mqtt_port"))
   {
     mqtt_port_ = std::stoi(info_.hardware_parameters.at("mqtt_port"));
@@ -49,7 +51,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   }
 
   // gripper joint name
-  gripper_joint_name_ = info_.joints[info_.joints.size()-1].name;
+  gripper_joint_name_ = info_.joints[info_.joints.size()-2].name;
   if (gripper_joint_name_.empty())
   {
     RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
@@ -59,20 +61,31 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
   }
 
+  gripper2_joint_name_ = info_.joints[info_.joints.size()-1].name;
+  if (gripper2_joint_name_.empty())
+  {
+    RCLCPP_ERROR(LOGGER, "Gripper 2 joint name is empty!");
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "Gripper 2 joint name is '%s'", gripper2_joint_name_.c_str());
+  }
+
   // Initialize state and command vectors.
   joint_velocities_cmd_.resize(actuator_count_, 0.0);
   joint_positions_.resize(actuator_count_, 0.0);
   joint_velocities_.resize(actuator_count_, 0.0);
   joint_torques_.resize(actuator_count_, 0.0);
   gripper_command_position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_2_command_position_ = std::numeric_limits<double>::quiet_NaN();
   gripper_position_ = std::numeric_limits<double>::quiet_NaN();
 
   // Verify that the URDF's joint count matches the expected count.
-  if (info_.joints.size() != actuator_count_+1)
+  if (info_.joints.size() != actuator_count_+2)
   {
     RCLCPP_ERROR(LOGGER,
       "URDF configuration error: Expected %zu joints, but got %zu.",
-      actuator_count_, info_.joints.size());
+      actuator_count_+2, info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -196,6 +209,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
 
     //to radians
     gripper_command_position_ = gripper_initial_position;
+    gripper_2_command_position_ = gripper_initial_position;
 
     sendGripperCommand(gripper_initial_position);
 
@@ -274,7 +288,7 @@ Kortex3HardwareInterface::export_state_interfaces()
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
-    if (info_.joints[i].name == gripper_joint_name_)
+    if (info_.joints[i].name == gripper_joint_name_ || info_.joints[i].name == gripper2_joint_name_)
     {
       state_interfaces.emplace_back(hardware_interface::StateInterface(
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_position_));
@@ -310,6 +324,11 @@ Kortex3HardwareInterface::export_command_interfaces()
     {
       command_interfaces.emplace_back(hardware_interface::CommandInterface(
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_command_position_));
+    }
+    else if (info_.joints[i].name == gripper2_joint_name_)
+    {
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_2_command_position_));
     }
     else
     {
@@ -417,8 +436,7 @@ std::optional<double> Kortex3HardwareInterface::readGripperPosition()
 
   // 3) Lazy init once
   if (!gripper_initialized_) {
-    constexpr uint16_t gripper_slave_id = 9;
-    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
+    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_modbus_id_);
 
     if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
       RCLCPP_WARN(LOGGER, "Modbus init failed; will retry later.");

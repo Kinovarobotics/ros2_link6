@@ -139,11 +139,12 @@ private:
   void sendGripperCommand(double position_radians);
 
   // --- Connection Parameters ---
-  std::string robot_ip_;      ///< IP address of the robot controller.
-  std::string username_;      ///< Username for session authentication.
-  std::string password_;      ///< Password for session authentication.
-  int mqtt_port_;             ///< TCP port for MQTT communication (commands).
-  int udp_feedback_port_;     ///< UDP port for high-frequency feedback.
+  std::string robot_ip_;       ///< IP address of the robot controller.
+  std::string username_;       ///< Username for session authentication.
+  std::string password_;       ///< Password for session authentication.
+  uint16_t gripper_modbus_id_; ///< The modbus ID to communicate with the gripper
+  int mqtt_port_;              ///< TCP port for MQTT communication (commands).
+  int udp_feedback_port_;      ///< UDP port for high-frequency feedback.
 
   // --- Kortex API Objects ---
   std::shared_ptr<k_api::RouterMQTT> router_mqtt_;
@@ -164,7 +165,9 @@ private:
   std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
   std::unique_ptr<MyFingerGripper> gripper_;
   std::string gripper_joint_name_;
+  std::string gripper2_joint_name_;
   double gripper_command_position_ = 0.0;
+  double gripper_2_command_position_ = 0.0;
   double gripper_position_ = 0.0;
   double gripper_velocity_ = 0.0;
   bool gripper_initialized_ = false;

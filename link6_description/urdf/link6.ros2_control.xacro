@@ -11,6 +11,7 @@
     robot_ip
     username
     password
+    gripper_modbus_id:=9
     moveit_active:=false">
 
     <ros2_control name="${prefix}Kortex3Interface" type="system">
@@ -33,6 +34,7 @@
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>
+            <param name="gripper_modbus_id">${gripper_modbus_id}</param>
           </xacro:unless>
         </xacro:unless>
         <xacro:if value="${moveit_active}">
@@ -40,6 +42,7 @@
           <param name="robot_ip">${robot_ip}</param>
           <param name="username">${username}</param>
           <param name="password">${password}</param>
+          <param name="gripper_modbus_id">${gripper_modbus_id}</param>
         </xacro:if>
       </hardware>
       <joint name="${prefix}joint_1">
@@ -110,7 +113,12 @@
       </joint>
 
       <xacro:unless value="${sim_gazebo}">
-        <joint name="${prefix}robotiq_85_left_knuckle_joint">
+        <joint name="${prefix}right_robotiq_85_left_knuckle_joint">
+          <command_interface name="position" />
+          <state_interface name="position" />
+          <state_interface name="velocity" />
+        </joint>
+        <joint name="${prefix}left_robotiq_85_left_knuckle_joint">
           <command_interface name="position" />
           <state_interface name="position" />
           <state_interface name="velocity" />
