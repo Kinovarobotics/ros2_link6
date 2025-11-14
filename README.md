@@ -8,46 +8,61 @@
 
 ## 2. Table of Contents
 
-- [3. Introduction](#3-introduction)  
-- [4. Getting Started](#4-getting-started)  
-  - [4.1 Prerequisites](#41-prerequisites)  
-    - [4.1.1 Install Dependencies](#411-install-dependencies)  
-  - [4.2 Robot Setup](#42-robot-setup)  
-- [5. Installation](#5-installation)  
-  - [5.1 Workspace Layout](#51-workspace-layout)  
-  - [5.2 Clone Repositories](#52-clone-repositories)  
-  - [5.3 Dependencies](#53-dependencies)  
-    - [5.3.1 System Dependencies](#531-system-dependencies)  
-    - [5.3.2 Package Dependencies](#532-package-dependencies)  
-  - [5.4 Build & Source](#54-build--source)  
-- [6. Usage](#6-usage)  
-  - [6.1 Quick Launch](#61-quick-launch)  
-    - [6.1.1 Real Hardware](#611-real-hardware)  
-    - [6.1.2 Simulation](#612-simulation)  
-  - [6.2 Controllers & Commands](#62-controllers--commands)  
-    - [6.2.1 Listing & Switching Controllers](#621-listing--switching-controllers)  
-    - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)  
-    - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)  
-  - [6.3 Testing Tools](#63-testing-tools)  
-    - [6.3.1 Read‑Only Test](#631-read-only-test)  
-    - [6.3.2 Velocity Control Test](#632-velocity-control-test)  
-    - [6.3.3 Calibration Read Test](#633-calibration-read-test)  
-- [7. Services & Fault Handling](#7-services--fault-handling)  
-  - [7.1 Operating Modes](#71-operating-modes)  
-  - [7.2 Switching Modes](#72-switching-modes)  
-  - [7.3 Fault Handling](#73-fault-handling)  
-- [8. Calibration Workflow](#8-calibration-workflow)  
-  - [8.1 Dump Calibration](#81-dump-calibration)  
-  - [8.2 Generate Calibrated URDF](#82-generate-calibrated-urdf)  
-  - [8.3 Use Calibrated Model](#83-use-calibrated-model)  
-- [9. Visualization](#9-visualization)  
-  - [9.1 RViz Setup](#91-rviz-setup)  
-  - [9.2 Interactive Marker Control](#92-interactive-marker-control)  
-  - [9.3 Force/Torque Zeroing](#93-force/torque-zeroing)  
-- [10. Package Overview](#10-package-overview)  
-  - [link6_description](#link6_description)  
-  - [link6_driver](#link6_driver)  
-  - [link6_control](#link6_control)  
+- [ROS2 Kortex 3](#ros2-kortex-3)
+  - [2. Table of Contents](#2-table-of-contents)
+  - [3. Introduction](#3-introduction)
+  - [4. Getting Started](#4-getting-started)
+    - [4.1 Prerequisites](#41-prerequisites)
+      - [4.1.1 Install Dependencies](#411-install-dependencies)
+    - [4.2 Robot Setup](#42-robot-setup)
+  - [5. Installation](#5-installation)
+    - [5.1 Workspace Layout](#51-workspace-layout)
+      - [5.1.1 Create \& enter your workspace](#511-create--enter-your-workspace)
+      - [5.1.2 Lay out your `src/` directory](#512-lay-out-your-src-directory)
+    - [5.2 Clone Additional Repositories](#52-clone-additional-repositories)
+    - [5.3 Dependencies](#53-dependencies)
+      - [5.3.1 System Dependencies](#531-system-dependencies)
+      - [5.3.2 Package Dependencies](#532-package-dependencies)
+    - [5.4 Build \& Source](#54-build--source)
+      - [5.4.1 Build](#541-build)
+      - [5.4.2 Source](#542-source)
+  - [6. Usage](#6-usage)
+    - [6.1 Quick Launch](#61-quick-launch)
+      - [6.1.1 Real Hardware](#611-real-hardware)
+      - [6.1.2 Simulation](#612-simulation)
+    - [6.2 Controllers \& Commands](#62-controllers--commands)
+      - [6.2.1 Listing \& Switching Controllers](#621-listing--switching-controllers)
+      - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)
+      - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)
+      - [6.2.4 Robotiq Gripper Controller](#624-robotiq-gripper-controller)
+      - [Real-life Control:](#real-life-control)
+      - [Simulation Control:](#simulation-control)
+    - [6.3 Testing Tools](#63-testing-tools)
+      - [6.3.1 Read‑Only Test](#631-readonly-test)
+      - [6.3.2 Velocity Control Test](#632-velocity-control-test)
+      - [6.3.3 Calibration Read Test](#633-calibration-read-test)
+    - [6.4 MoveIt](#64-moveit)
+      - [6.4.1 Real Hardware](#641-real-hardware)
+      - [6.4.2 Simulation](#642-simulation)
+  - [7. Services \& Fault Handling](#7-services--fault-handling)
+    - [7.1 Operating Modes](#71-operating-modes)
+    - [7.2 Switching Modes](#72-switching-modes)
+    - [7.3 Fault Handling](#73-fault-handling)
+  - [8. Calibration Workflow](#8-calibration-workflow)
+    - [8.1 Dump Calibration](#81-dump-calibration)
+    - [8.2 Generate Calibrated URDF](#82-generate-calibrated-urdf)
+    - [8.3 Use Calibrated Model](#83-use-calibrated-model)
+  - [9. Visualization](#9-visualization)
+    - [9.1 RViz Setup](#91-rviz-setup)
+    - [9.2 Interactive Marker Control](#92-interactive-marker-control)
+    - [9.3 Force/Torque Zeroing](#93-forcetorque-zeroing)
+  - [10. Package Overview](#10-package-overview)
+    - [link6\_description](#link6_description)
+    - [link6\_driver](#link6_driver)
+    - [link6\_control](#link6_control)
+  - [Future Developments](#future-developments)
+  - [Limitations](#limitations)
+  - [Authors](#authors)
 
 ---
 
@@ -467,6 +482,34 @@ ros2 run kortex3_hardware test_read_calibration
 ```
 
 ---
+
+### 6.4 MoveIt
+
+#### 6.4.1 Real Hardware
+
+To use MoveIt with a real life Link6, first bringup the robot:
+
+```bash
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+```
+Then start MoveIt:
+```bash
+ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
+```
+
+#### 6.4.2 Simulation
+
+**Simulation (Ignition/Gazebo Fortress)**
+
+To use MoveIt with a simulated Link6, first bringup the robot:
+
+```bash
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+```
+Then start MoveIt:
+```bash
+ros2 launch link6_moveit_config move_group.launch.py use_sim_time:=true use_rviz:=true
+```
 
 ## 7. Services & Fault Handling
 

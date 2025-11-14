@@ -11,21 +11,11 @@
     robot_ip
     username:=admin
     password:=admin
-    
-    
-    
-    
-    
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
-    
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
-    
-    
-    
-    gripper_com_port_left:=/dev/ttyUSB0
-    gripper_com_port_right:=/dev/ttyUSB1
+    gripper_com_port:=/dev/ttyUSB0
     moveit_active:=false">
 
     <!-- Properties -->
@@ -463,25 +453,12 @@
           prefix="${prefix}"
           use_fake_hardware="${use_fake_hardware}"
           fake_sensor_commands="${fake_sensor_commands}"
-          include_ros2_control="false"
-          com_port="${gripper_com_port_left}"
+          include_ros2_control="${sim_gazebo}"
+          com_port="${gripper_com_port}"
           sim_ignition="${sim_gazebo}">
           <origin xyz="0 0 0" rpy="0 0 0" />
         </xacro:robotiq_gripper>
     </xacro:unless>
 
-    <!-- <xacro:unless value="${not gripper}">
-      <xacro:include filename="$(find agri_harveyl_description)/urdf/double_gripper_macro.urdf.xacro" />
-      <xacro:double_robotiq_gripper
-        parent="${prefix}end_effector_link"
-        prefix="${prefix}"
-        use_fake_hardware="${use_fake_hardware}"
-        fake_sensor_commands="${fake_sensor_commands}"
-        use_sim="${sim_gazebo}"
-        com_port_left="${gripper_com_port_left}"
-        com_port_right="${gripper_com_port_right}">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-      </xacro:double_robotiq_gripper>
-    </xacro:unless> -->
   </xacro:macro>
 </robot>
