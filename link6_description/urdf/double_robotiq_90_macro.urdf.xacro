@@ -13,7 +13,15 @@
 
         <xacro:property name="PI" value="3.14159"/>
 
-        <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+        <xacro:arg name="grip_pos_min" default="0"/>
+        <xacro:arg name="grip_pos_max" default="0.025"/>
+        <xacro:arg name="baudrate" default="115200"/>
+        <xacro:arg name="parity" default="N"/>
+        <xacro:arg name="data_bits" default="8"/>
+        <xacro:arg name="stop_bit" default="1"/>
+        <xacro:arg name="slave_id" default="9"/>
+
+        <xacro:include filename="$(find link6_description)/urdf/robotiq_hande_cutter.xacro"/>
 
         <link name="${prefix}double_gripper_90_degrees_angle_bracket"></link>
 
@@ -47,44 +55,44 @@
         </joint>
 
         <!-- Include left gripper -->
-        <xacro:robotiq_gripper
+        <xacro:robotiq_hande_gripper
             name="LeftRobotiqGripperHardwareInterface"
             prefix="${prefix}left_"
             parent="${prefix}left_gripper_link"
+            grip_pos_min="$(arg grip_pos_min)"
+            grip_pos_max="$(arg grip_pos_max)"
+            tty_port="${gripper_com_port_left}"
+            baudrate="$(arg baudrate)"
+            parity="$(arg parity)"
+            data_bits="$(arg data_bits)"
+            stop_bit="$(arg stop_bit)"
+            slave_id="$(arg slave_id)"
             use_fake_hardware="${use_fake_hardware}"
-            fake_sensor_commands="${fake_sensor_commands}"
             include_ros2_control="${sim_gazebo}"
-            sim_ignition="${use_sim}"
-            com_port="${gripper_com_port_left}">
-            <origin xyz="0 0 0" rpy="0 0 ${PI}"/>
-        </xacro:robotiq_gripper>
-
-        <link name="${prefix}left_tool_frame"></link>
-        <joint name="${prefix}left_tool_frame_joint" type="fixed">
-            <origin xyz="0 0 0.12" rpy="0 0 0"/>
-            <parent link="${prefix}left_robotiq_85_base_link"/>
-            <child link="${prefix}left_tool_frame"/>
-        </joint>
+            sim_gazebo="${sim_gazebo}"
+            xyz="0 0 0"
+            rpy="0 0 ${PI}"
+        />
 
         <!-- Include right gripper -->
-        <xacro:robotiq_gripper
+        <xacro:robotiq_hande_gripper
             name="RightRobotiqGripperHardwareInterface"
             prefix="${prefix}right_"
             parent="${prefix}right_gripper_link"
+            grip_pos_min="$(arg grip_pos_min)"
+            grip_pos_max="$(arg grip_pos_max)"
+            tty_port="${gripper_com_port_right}"
+            baudrate="$(arg baudrate)"
+            parity="$(arg parity)"
+            data_bits="$(arg data_bits)"
+            stop_bit="$(arg stop_bit)"
+            slave_id="$(arg slave_id)"
             use_fake_hardware="${use_fake_hardware}"
-            fake_sensor_commands="${fake_sensor_commands}"
             include_ros2_control="${sim_gazebo}"
-            sim_ignition="${use_sim}"
-            com_port="${gripper_com_port_right}">
-            <origin xyz="0 0 0" rpy="0 0 ${PI}"/>
-        </xacro:robotiq_gripper>
-
-        <link name="${prefix}right_tool_frame"></link>
-        <joint name="${prefix}right_tool_frame_joint" type="fixed">
-            <origin xyz="0 0 0.12" rpy="0 0 0"/>
-            <parent link="${prefix}right_robotiq_85_base_link"/>
-            <child link="${prefix}right_tool_frame"/>
-        </joint>
+            sim_gazebo="${sim_gazebo}"
+            xyz="0 0 0"
+            rpy="0 0 ${PI}"
+        />
 
     </xacro:macro>
 </robot>

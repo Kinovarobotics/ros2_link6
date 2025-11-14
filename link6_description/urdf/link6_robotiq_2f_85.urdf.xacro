@@ -6,19 +6,11 @@
     <xacro:arg name="username" default="admin" />
     <xacro:arg name="password" default="admin" />
     <xacro:arg name="port" default="10000" />
-    <xacro:arg name="port_realtime" default="10001" />
-    <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
-    <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
-    <xacro:arg name="gripper" default="" />
-    <xacro:arg name="gripper_joint_name" default="finger_joint" />
-    <xacro:arg name="gripper_max_velocity" default="100.0" />
-    <xacro:arg name="gripper_max_force" default="100.0" />
     <xacro:arg name="sim_gazebo" default="false" />
     <xacro:arg name="prefix" default="" />
     <xacro:arg name="use_fake_hardware" default="false" />
     <xacro:arg name="fake_sensor_commands" default="false" />
-    <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
-    <xacro:arg name="use_external_cable" default="false" />
+    <xacro:arg name="gripper_com_port" default="/dev/ttyUSB0" />
 
     <xacro:include filename="$(find link6_description)/urdf/link6_macro.xacro" />
     <!-- initial position for simulations (Mock Hardware, Gazebo) -->
@@ -43,18 +35,31 @@
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
     </xacro:link6>
 
-    <link name="$(arg prefix)tool_frame" />
+    <!-- Include and load the gripper -->
+    <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
+
+    <xacro:robotiq_gripper
+        name="RobotiqGripperHardwareInterface"
+        parent="$(arg prefix)end_effector_link"
+        prefix="$(arg prefix)"
+        use_fake_hardware="$(arg use_fake_hardware)"
+        fake_sensor_commands="$(arg fake_sensor_commands)"
+        include_ros2_control="$(arg sim_gazebo)"
+        com_port="$(arg gripper_com_port)"
+        sim_ignition="$(arg sim_gazebo)">
+        <origin xyz="0 0 0" rpy="0 0 3.14159" />
+    </xacro:robotiq_gripper>
+
+    <link name="$(arg prefix)tool_frame"></link>
     <joint name="$(arg prefix)tool_frame_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="$(arg prefix)end_effector_link" />
-        <child link="$(arg prefix)tool_frame" />
-        <axis xyz="0 0 0" />
+        <origin xyz="0 0 0.12" rpy="0 0 0"/>
+        <parent link="$(arg prefix)robotiq_85_base_link"/>
+        <child link="$(arg prefix)tool_frame"/>
     </joint>
 
     <xacro:if value="$(arg sim_gazebo)">
         <gazebo>
-            <plugin filename="gz_ros2_control-system"
-                name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
                 <parameters>$(find link6_control)/config/kortex3_controllers.yaml</parameters>
                 <controller_manager_node_name>controller_manager</controller_manager_node_name>
             </plugin>

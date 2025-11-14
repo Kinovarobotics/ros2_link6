@@ -21,6 +21,7 @@
     <xacro:include filename="$(find link6_description)/urdf/link6.ros2_control.xacro" />
     <xacro:link6_ros2_control
       prefix="${prefix}"
+      gripper="${gripper}"
       use_fake_hardware="${use_fake_hardware}"
       fake_sensor_commands="${fake_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
@@ -455,6 +456,28 @@
           <parent link="${prefix}robotiq_85_base_link"/>
           <child link="${prefix}tool_frame"/>
       </joint>
+    </xacro:if>
+
+    <xacro:if value="${gripper == 'robotiq_hande'}">
+      <xacro:include filename="$(find link6_description)/urdf/robotiq_hande_cutter.xacro" />
+      <xacro:robotiq_hande_gripper
+          name="RobotiqGripperHardwareInterface"
+          prefix="${prefix}"
+          parent="${prefix}end_effector_link"
+          grip_pos_min="0"
+          grip_pos_max="0.025"
+          tty_port="${gripper_com_port_left}"
+          baudrate="115200"
+          parity="N"
+          data_bits="8"
+          stop_bit="1"
+          slave_id="9"
+          use_fake_hardware="${use_fake_hardware}"
+          include_ros2_control="${sim_gazebo}"
+          sim_gazebo="${sim_gazebo}"
+          xyz="0 0 0"
+          rpy="0 0 3.14159"
+      />
     </xacro:if>
 
     <xacro:if value="${gripper == 'double_robotiq'}">

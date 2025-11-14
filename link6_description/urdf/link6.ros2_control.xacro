@@ -4,6 +4,7 @@
   <xacro:macro name="link6_ros2_control"
     params="
     prefix
+    gripper
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
@@ -113,16 +114,35 @@
       </joint>
 
       <xacro:unless value="${sim_gazebo}">
-        <joint name="${prefix}right_robotiq_85_left_knuckle_joint">
-          <command_interface name="position" />
-          <state_interface name="position" />
-          <state_interface name="velocity" />
-        </joint>
-        <joint name="${prefix}left_robotiq_85_left_knuckle_joint">
-          <command_interface name="position" />
-          <state_interface name="position" />
-          <state_interface name="velocity" />
-        </joint>
+
+        <xacro:if value="${gripper == 'robotiq_2f_85'}">
+          <joint name="${prefix}robotiq_85_left_knuckle_joint">
+            <command_interface name="position" />
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+          </joint>
+        </xacro:if>
+
+        <xacro:if value="${gripper == 'robotiq_hande'}">
+          <joint name="${prefix}robotiq_hande_left_finger_joint">
+            <command_interface name="position" />
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+          </joint>
+        </xacro:if>
+
+        <xacro:if value="${gripper == 'double_robotiq_90'}">
+          <joint name="${prefix}right_robotiq_hande_left_finger_joint">
+            <command_interface name="position" />
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+          </joint>
+          <joint name="${prefix}left_robotiq_hande_left_finger_joint">
+            <command_interface name="position" />
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+          </joint>
+        </xacro:if>
       </xacro:unless>
 
     </ros2_control>
