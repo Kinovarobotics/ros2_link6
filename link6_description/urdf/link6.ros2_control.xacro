@@ -129,7 +129,7 @@
             <state_interface name="position" />
             <state_interface name="velocity" />
           </joint>
-          <joint name="${prefix}left_robotiq_hande_left_finger_joint">
+          <joint name="${prefix}robotiq_hande_left_finger_joint">
             <command_interface name="position" />
             <state_interface name="position" />
             <state_interface name="velocity" />
