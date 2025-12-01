@@ -7,19 +7,10 @@
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
-    
-    
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
     robot_ip
     username
     password
-    
-    
-    
-    
-    
-    
-    
     moveit_active:=false">
 
     <ros2_control name="${prefix}Kortex3Interface" type="system">
@@ -144,11 +135,14 @@
         <state_interface name="effort" />
       </joint>
 
-      <joint name="${prefix}robotiq_85_left_knuckle_joint">
-          <command_interface name="position" />
-          <state_interface name="position"/>
-          <state_interface name="velocity"/>
-      </joint>
+      <xacro:unless value="${sim_gazebo}">
+        <joint name="${prefix}robotiq_85_left_knuckle_joint">
+            <command_interface name="position" />
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+      </xacro:unless>
+
     </ros2_control>
   </xacro:macro>
 </robot>

@@ -171,10 +171,10 @@ def generate_launch_description():
         OnProcessExit(
             target_action = js_broadcaster,
             on_exit=[
-                # velocity_controller,
+                velocity_controller,
                 joint_trajectory_controller, 
-                # cartesian_motion_controller_spawner,
-                # motion_control_handle_spawner,
+                cartesian_motion_controller_spawner,
+                motion_control_handle_spawner,
                 robot_hand_controller_spawner,
             ],
         )
