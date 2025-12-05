@@ -1,38 +1,30 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    RegisterEventHandler,
+)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import (
+    Command, FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
 
 
-def generate_launch_description():
+def launch_setup(context, *args, **kwargs):
 
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
     gui = LaunchConfiguration("gui")
     gz_args = LaunchConfiguration("gz_args")
-
-    gripper_arg = DeclareLaunchArgument(
-        "gripper",      
-        default_value="",
-        description='Name of the gripper attached to the arm (empty for no gripper).'
-    )
-
-    gui_arg = DeclareLaunchArgument(
-        'gui',
-        default_value='true',
-        description='Whether to run the Gazebo GUI.'
-    )
-
-    gaz_args_arg = DeclareLaunchArgument(
-        "gz_args",      
-        default_value="-r -v 2 empty.sdf",
-        description='Arguments to pass to Gazebo.'
-    )
-
 
     # Create the launch actions
     robot_description = {
@@ -55,7 +47,7 @@ def generate_launch_description():
 
     robot_controllers = PathJoinSubstitution(
         [FindPackageShare("link6_control"),
-         "config", "kortex3_controllers.yaml"]
+         "config", "kortex3_sim_controllers.yaml"]
     )
 
     gazebo = IncludeLaunchDescription(
@@ -87,7 +79,7 @@ def generate_launch_description():
         parameters = [robot_description, {"use_sim_time": True}],
     )
 
-    js_broadcaster = Node(
+    joint_state_broadcaster_spawner = Node(
         package    = "controller_manager",
         executable = "spawner",
         parameters = [{"use_sim_time": True}],
@@ -144,7 +136,6 @@ def generate_launch_description():
     robot_hand_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        parameters = [{"use_sim_time": True}],
         arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"],
         condition=IfCondition(PythonExpression(["'", gripper, "' != ''"])),
     )
@@ -163,13 +154,13 @@ def generate_launch_description():
     load_js_after_spawn = RegisterEventHandler(
         OnProcessExit(
             target_action = spawn,
-            on_exit       = [js_broadcaster],
+            on_exit       = [joint_state_broadcaster_spawner],
         )
     )
 
     load_controllers_after_js = RegisterEventHandler(
         OnProcessExit(
-            target_action = js_broadcaster,
+            target_action = joint_state_broadcaster_spawner,
             on_exit=[
                 velocity_controller,
                 joint_trajectory_controller, 
@@ -187,20 +178,41 @@ def generate_launch_description():
         output     = "screen",
         parameters = [{"use_sim_time": True}],
     )
+    nodes_to_start = [
+        gazebo,
+        robot_state_publisher_node,
+        spawn,
+        load_js_after_spawn,
+        load_controllers_after_js,
+        clock_bridge,
+        topic_relay,
+    ]
 
-    # Create the launch description and populate
-    ld = LaunchDescription()
+    return nodes_to_start
 
-    ld.add_action(gripper_arg)
-    ld.add_action(gui_arg)
-    ld.add_action(gaz_args_arg)
 
-    ld.add_action(gazebo)
-    ld.add_action(robot_state_publisher_node)
-    ld.add_action(spawn)
-    ld.add_action(load_js_after_spawn)
-    ld.add_action(load_controllers_after_js) 
-    ld.add_action(clock_bridge)
-    ld.add_action(topic_relay)
+def generate_launch_description():
+    declared_arguments = []
 
-    return ld
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper",      
+            default_value="",
+            description='Name of the gripper attached to the arm (empty for no gripper).'
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'gui',
+            default_value='true',
+            description='Whether to run the Gazebo GUI.'
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gz_args",      
+            default_value="-r -v 2 empty.sdf",
+            description='Arguments to pass to Gazebo.'
+        )
+    )
+    return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])

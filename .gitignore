@@ -1,3 +1,4 @@
 kortex_api-*.whl
-cartesian_contollers/
+cartesian_controllers/
 ros2_robotiq_gripper/
+serial/
