@@ -1,32 +1,25 @@
 """
-This module reads a zip file containing an XML file with joint offsets and a nominal URDF file. It then applies the robot calibration offset found in the XML file and outputs a modified URDF with the specific calibration information.
+This module reads a calibration file (XML or ZIP) and applies robot calibration
+offsets to a Xacro macro file. It preserves the macro structure including prefix
+variables, properties, conditionals, and gripper integration.
 
 Functions:
-    apply_calibration(zip_file: str) -> str:
-        Takes in a filepath to a zip file containing an XML file with joint offsets and a nominal URDF file.
-        Returns a string of the modified URDF with the specific calibration information applied.
+    apply_calibration_to_macro: Applies calibration data to a Xacro macro file.
 """
 import argparse
 import os
-import sys                     
 import tempfile
 import tkinter as tk
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from tkinter import filedialog
-from typing import List
+from typing import List, Optional
 from zipfile import ZipFile, is_zipfile
 
 import numpy as np
 import numpy.typing as npt
 from scipy.spatial.transform import Rotation as R
 import logging
-
-SCRIPT_DIR = Path(__file__).resolve().parent   
-sys.path.insert(0, str(SCRIPT_DIR))          
-from urdf_parser import urdf                 
-
-
 
 logger = logging.getLogger("calibrated_urdf")
 logging.basicConfig(
@@ -132,6 +125,152 @@ class CalibrationFile:
         return elasto_calibration_matrices
 
 
+def find_joint_in_xacro(root: ET.Element, joint_name: str) -> Optional[ET.Element]:
+    """
+    Find a joint element in a Xacro file by name, handling both regular names
+    and names with prefix variables like ${prefix}joint_1.
+
+    Args:
+        root: Root element of the XML tree or macro element
+        joint_name: Name of the joint to find (e.g., "joint_1" or "${prefix}joint_1")
+
+    Returns:
+        The joint element if found, None otherwise
+    """
+    # Try to find joint with exact name match
+    for joint in root.iter("joint"):
+        if joint.get("name") == joint_name:
+            return joint
+
+    # If not found and joint_name doesn't have prefix, try with ${prefix}
+    if not joint_name.startswith("${prefix}"):
+        prefixed_name = f"${{prefix}}{joint_name}"
+        for joint in root.iter("joint"):
+            if joint.get("name") == prefixed_name:
+                return joint
+
+    return None
+
+
+def parse_origin_to_matrix(origin_elem: ET.Element) -> np.ndarray:
+    """
+    Parse an origin element's xyz and rpy attributes into a 4x4 transformation matrix.
+
+    Args:
+        origin_elem: The origin XML element
+
+    Returns:
+        4x4 homogeneous transformation matrix
+    """
+    xyz_str = origin_elem.get("xyz", "0 0 0")
+    rpy_str = origin_elem.get("rpy", "0 0 0")
+
+    xyz = np.array([float(x) for x in xyz_str.split()])
+    rpy = np.array([float(x) for x in rpy_str.split()])
+
+    # Create transformation matrix
+    rot = R.from_euler("xyz", rpy, degrees=False)
+    T = np.eye(4, dtype=np.float64)
+    T[:3, :3] = rot.as_matrix()
+    T[:3, 3] = xyz
+
+    return T
+
+
+def update_origin_element(origin_elem: ET.Element, T: np.ndarray) -> None:
+    """
+    Update an origin element's xyz and rpy attributes from a transformation matrix.
+
+    Args:
+        origin_elem: The origin XML element to update
+        T: 4x4 homogeneous transformation matrix
+    """
+    xyz = T[:3, 3]
+    rot = R.from_matrix(T[:3, :3])
+    rpy = rot.as_euler("xyz", degrees=False)
+
+    # Format with high precision to maintain calibration accuracy
+    xyz_str = f"{xyz[0]:.17f} {xyz[1]:.17f} {xyz[2]:.17f}"
+    rpy_str = f"{rpy[0]:.17f} {rpy[1]:.17f} {rpy[2]:.17f}"
+
+    origin_elem.set("xyz", xyz_str)
+    origin_elem.set("rpy", rpy_str)
+
+
+def apply_calibration_to_macro(
+    macro_path: Path,
+    calib: "CalibrationFile",
+    output_path: Path
+) -> None:
+    """
+    Apply calibration offsets to joints in a Xacro macro file.
+    Preserves the macro structure including prefix variables, properties, and conditionals.
+
+    Args:
+        macro_path: Path to the input Xacro macro file
+        calib: CalibrationFile object containing calibration data
+        output_path: Path where the calibrated macro should be written
+    """
+    logger.info(f"Loading Xacro macro from: {macro_path}")
+
+    # Register xacro namespace to preserve it in output
+    ET.register_namespace("xacro", "http://www.ros.org/wiki/xacro")
+
+    # Parse the Xacro file as XML (don't expand it)
+    parser = ET.XMLParser(target=ET.TreeBuilder(insert_comments=True))
+    tree = ET.parse(str(macro_path), parser=parser)
+    root = tree.getroot()
+
+    logger.info("Applying calibration to joints...")
+
+    # Apply calibration to each joint (joint_1 through joint_6)
+    joints_calibrated = 0
+    for idx in range(6):
+        joint_idx = idx + 1
+        joint_name = f"joint_{joint_idx}"
+
+        # Try to find the joint (handles both "joint_N" and "${prefix}joint_N")
+        joint = find_joint_in_xacro(root, joint_name)
+
+        if joint is None:
+            logger.warning(f"Could not find {joint_name} in macro")
+            continue
+
+        # Find the origin element
+        origin = joint.find("origin")
+        if origin is None:
+            logger.warning(f"{joint_name} has no origin element")
+            continue
+
+        # Get nominal transformation
+        T_nom = parse_origin_to_matrix(origin)
+
+        # Apply calibration: T_cal = T_calib * T_nom
+        T_calib = calib.geometric_calibration[idx]
+        T_cal = T_calib @ T_nom
+
+        # Update the origin element
+        update_origin_element(origin, T_cal)
+
+        logger.info(f"Calibrated {joint.get('name')}: xyz={T_cal[:3, 3]}, "
+                   f"rpy={R.from_matrix(T_cal[:3, :3]).as_euler('xyz', degrees=False)}")
+        joints_calibrated += 1
+
+    if joints_calibrated != 6:
+        logger.warning(f"Only calibrated {joints_calibrated}/6 joints")
+    else:
+        logger.info("Successfully calibrated all 6 joints")
+
+    # Write the calibrated macro
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Write with proper XML declaration and formatting
+    with open(output_path, "wb") as f:
+        tree.write(f, encoding="utf-8", xml_declaration=True)
+
+    logger.info(f"Calibrated macro written to: {output_path}")
+
+
 def get_calibration_file_path() -> Path:
     """
     Opens a file dialog to select the calibration package file and returns its path.
@@ -176,28 +315,22 @@ if __name__ == "__main__":
     # 1.  Command-line interface
     # -------------------------------------------------------------------------
     parser = argparse.ArgumentParser(
-        description="Generate a robot-specific calibrated Xacro."
+        description="Generate a robot-specific calibrated Xacro macro."
     )
     parser.add_argument(
-        "--urdf", default="link6_nominal",
-        help="Base name (without extension) of the *nominal* URDF inside "
-             "`<pkg>/urdf/`. Ignored when --urdf_path is given."
-    )
-    parser.add_argument(
-        "--urdf_path", default=None,
-        help="Absolute path to the nominal URDF file. "
-             "Takes precedence over --urdf."
+        "--urdf_path", required=True,
+        help="Absolute path to the nominal Xacro macro file (e.g., link6_macro.xacro)."
     )
     parser.add_argument(
         "--calibration_file", required=True,
-        help="Path to the bundle coming from the controller "
+        help="Path to the calibration bundle from the controller "
              "(either *.zip or calib.xml)."
     )
     parser.add_argument(
         "--output_file", default=None,
-        help="Where to write the calibrated model. "
-             "If omitted, it is placed next to the nominal URDF and given "
-             'the name "link6_calibrated.xacro".'
+        help="Where to write the calibrated macro. "
+             "If omitted, it is placed next to the input file with "
+             "'_calibrated' suffix (e.g., link6_calibrated_macro.xacro)."
     )
     args = parser.parse_args()
 
@@ -208,14 +341,10 @@ if __name__ == "__main__":
     if not cal_path.is_file():
         raise FileNotFoundError(f"Calibration file not found: {cal_path}")
 
-    # nominal URDF (already expanded from Xacro by the C++ side)
-    if args.urdf_path:
-        urdf_file_path = Path(args.urdf_path).expanduser().resolve()
-    else:
-        urdf_file_path = Path("urdf").resolve() / f"{args.urdf}.urdf"
-    if not urdf_file_path.is_file():
-        raise FileNotFoundError(f"Nominal URDF missing: {urdf_file_path}")
-    logger.debug("Nominal URDF: %s", urdf_file_path)
+    macro_path = Path(args.urdf_path).expanduser().resolve()
+    if not macro_path.is_file():
+        raise FileNotFoundError(f"Macro file not found: {macro_path}")
+    logger.info(f"Input macro file: {macro_path}")
 
     # -------------------------------------------------------------------------
     # 3.  Parse calibration bundle
@@ -229,40 +358,27 @@ if __name__ == "__main__":
         calib = CalibrationFile(cal_path)
 
     # -------------------------------------------------------------------------
-    # 4.  Load nominal model & apply offsets
+    # 4.  Determine output path
     # -------------------------------------------------------------------------
-    robot = urdf.Robot.from_xml_file(urdf_file_path)
-    for idx, joint in enumerate(robot.joints):
-        T_nom = joint.origin.to_matrix()
-        T_cal = calib.geometric_calibration[idx] @ T_nom
-
-        rot = R.from_matrix(T_cal[:3, :3])
-        joint.origin.xyz = T_cal[:3, 3].tolist()
-        joint.origin.rpy = rot.as_euler("xyz", degrees=False).tolist()
-
-        logger.debug("joint_%d xyz=%s rpy=%s",
-                     idx + 1, joint.origin.xyz, joint.origin.rpy)
-
-    # -------------------------------------------------------------------------
-    # 5.  Write calibrated **Xacro**
-    # -------------------------------------------------------------------------
-    from urdf_parser.xml_reflection.basics import xml_string
-
-    # Build new XML tree
-    root = robot.to_xml()
-    root.set("name", "link6_calibrated")
-    root.set("xmlns:xacro", "http://ros.org/wiki/xacro")
-
-    # Decide output location
     if args.output_file:
         out_path = Path(args.output_file).expanduser().resolve()
     else:
-        out_path = urdf_file_path.with_name("link6_calibrated.xacro")
-    out_path = out_path.with_suffix(".xacro")  # enforce suffix
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Generate output name from input (e.g., link6_macro.xacro -> link6_calibrated_macro.xacro)
+        stem = macro_path.stem  # e.g., "link6_macro"
+        if stem.endswith("_macro"):
+            out_stem = stem.replace("_macro", "_calibrated_macro")
+        else:
+            out_stem = f"{stem}_calibrated"
+        out_path = macro_path.with_name(f"{out_stem}.xacro")
 
-    with open(out_path, "w") as f:
-        f.write('<?xml version="1.0" encoding="utf-8"?>\n')
-        f.write(xml_string(root, addHeader=False))
+    logger.info(f"Output will be written to: {out_path}")
 
-    logger.info("Calibrated Xacro written to %s", out_path)
+    # -------------------------------------------------------------------------
+    # 5.  Apply calibration to macro
+    # -------------------------------------------------------------------------
+    try:
+        apply_calibration_to_macro(macro_path, calib, out_path)
+        logger.info("✓ Calibration completed successfully")
+    except Exception as e:
+        logger.error(f"✗ Calibration failed: {e}")
+        raise

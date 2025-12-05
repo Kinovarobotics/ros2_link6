@@ -49,9 +49,9 @@
     - [7.2 Switching Modes](#72-switching-modes)
     - [7.3 Fault Handling](#73-fault-handling)
   - [8. Calibration Workflow](#8-calibration-workflow)
-    - [8.1 Dump Calibration](#81-dump-calibration)
-    - [8.2 Generate Calibrated URDF](#82-generate-calibrated-urdf)
-    - [8.3 Use Calibrated Model](#83-use-calibrated-model)
+    - [8.1 How It Works](#81-how-it-works)
+    - [8.2 Testing Calibration (Development)](#82-testing-calibration-development)
+    - [8.3 Using Calibrated Model](#83-using-calibrated-model)
   - [9. Visualization](#9-visualization)
     - [9.1 RViz Setup](#91-rviz-setup)
     - [9.2 Interactive Marker Control](#92-interactive-marker-control)
@@ -568,33 +568,46 @@ Note: Some errors might require the user to login into the web app to manual jog
 
 ## 8. Calibration Workflow
 
-### 8.1 Dump Calibration
+The Link6 ROS 2 driver features an automatic calibration feature that uses calibration data from the robot controller to apply robot-specific geometric corrections to the URDF file, improving positional accuracy.
 
-On bringup, the driver pulls the on‑board calibration bundle and unzips `calib.xml` into:
+### 8.1 How It Works
 
-```
-$(ros2 pkg prefix link6_description)/share/link6_description/calibration/
-```
+1. **On bringup**, the hardware interface downloads the calibration bundle from the robot
+2. **Calibration data** is extracted to: `$(ros2 pkg prefix link6_description)/share/link6_description/calibration/calib.xml`
+3. **Python script** applies calibration offsets to the macro: `link6_macro.xacro` → `link6_calibrated_macro.xacro`
+4. **Calibrated model** is available at: `$(ros2 pkg prefix link6_description)/share/link6_description/urdf/link6_calibrated_macro.xacro`
 
-### 8.2 Generate Calibrated URDF
+### 8.2 Testing Calibration (Development)
 
-The driver expands your `link6_nominal.xacro` to URDF, then runs:
+For development and testing, you can verify the calibration script works correctly using test calibration data:
 
 ```bash
-python3 calibrated_urdf_generator.py \
-  --urdf_path   <...>/calibration/link6_nominal.urdf \
-  --calibration_file  <...>/calibration/calib.xml \
-  --output_file  <...>/urdf/link6_calibrated.xacro
+# Run automated test with example calibration data
+cd $(ros2 pkg prefix link6_description)/share/link6_description
+bash scripts/test_calibration.sh
 ```
 
-and automatically switches the robot description to `link6_calibrated.xacro`.
+Note: The test calibration data in `test/calibration/` is for development only. Actual calibration data is downloaded from the robot automatically when the hardware interface connects.
 
-### 8.3 Use Calibrated Model
+### 8.3 Using Calibrated Model
 
-All controllers and RViz displays will now use `link6_calibrated.xacro` under:
+To use the calibrated robot model in your launch files:
 
+```python
+# Instead of link6.urdf.xacro, use:
+robot_description = xacro.process_file(
+    os.path.join(pkg_share, 'urdf', 'link6_calibrated.urdf.xacro'),
+    mappings={'robot_ip': robot_ip, 'gripper': gripper, ...}
+).toxml()
 ```
-$(ros2 pkg prefix link6_description)/share/link6_description/urdf/
+
+Or include the calibrated macro directly:
+
+```xml
+<xacro:include filename="$(find link6_description)/urdf/link6_calibrated_macro.xacro" />
+<xacro:link6 parent="world" gripper="true" robot_ip="192.168.1.10" ...>
+  <origin xyz="0 0 0" rpy="0 0 0" />
+</xacro:link6>
 ```
 
 ---
