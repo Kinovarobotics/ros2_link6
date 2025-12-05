@@ -289,9 +289,10 @@ By default our `controller_manager` brings up:
 | Controller                        | Type                                                    | Purpose                          | Input Topic / Interface                                   |
 | :-------------------------------- | :------------------------------------------------------ | :------------------------------- | :-------------------------------------------------------- |
 | **joint\_state\_broadcaster**     | `joint_state_broadcaster/JointStateBroadcaster`         | Publish all joint states         | `/joint_states` (sensor\_msgs/JointState)                 |
-| **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (Float64MultiArray) |
-| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_pose` (PoseStamped)  |
-| **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `control_msgs/action/GripperCommand` (Action Interface)  |
+| **joint\_trajectory\_controller**   | `joint_trajectory_controller/JointTrajectoryController`     | Joint trajectory commands | `/joint_trajectory_controller/joint_trajectory` (trajectory_msgs/msg/JointTrajectory) |
+| **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (std_msgs/msg/Float64MultiArray) |
+| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_frame` (geometry_msgs/msg/PoseStamped)  |
+| **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `/robotiq_gripper_controller/gripper_cmd` (control_msgs/action/GripperCommand)  |
 | **motion\_control\_handle**       | `cartesian_controller_handles/MotionControlHandle`      | RViz interactive‑marker handle   | —                                                         |
 
 #### 6.2.1 Listing & Switching Controllers
@@ -300,7 +301,9 @@ By default our `controller_manager` brings up:
 ros2 control list_controllers
 ```
 
-Activate Cartesian (+ handle) and stop velocity:
+Switch controllers by activating the desired one and deactivating the not-needed other.
+
+For example: Activate Cartesian motion controller and stop joint velocity controller:
 
 ```bash
 ros2 control switch_controllers \
@@ -308,15 +311,24 @@ ros2 control switch_controllers \
   --deactivate  joint_velocity_controller
 ```
 
-Activate velocity and stop Cartesian:
+#### 6.2.2 Joint Trajectory Controller
 
-```bash
-ros2 control switch_controllers \
-  --activate joint_velocity_controller \
-  --deactivate  cartesian_motion_controller 
-```
+> **Use‑case:** direct joint trajectory commands.
+> **Type:** `joint_trajectory_controller/JointTrajectoryController`
 
-#### 6.2.2 Cartesian Motion Controller
+1. Activate (see above).
+2. Publish a trajectory:
+
+  ```bash
+  ros2 topic pub /joint_trajectory_controller/joint_trajectory trajectory_msgs/JointTrajectory "{
+    joint_names: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6],
+    points: [
+      { positions: [0, 0, 0, 0, 0, 0], time_from_start: { sec: 10 } },
+    ]
+  }" -1
+  ```
+
+#### 6.2.3 Cartesian Motion Controller
 
 > **Use‑case:** smooth end‑effector motion via RViz handle or programmatic targets.
 > **Type:** `cartesian_motion_controller/CartesianMotionController`
@@ -326,10 +338,10 @@ ros2 control switch_controllers \
 2. **Send target pose**:
 
 ```bash
-ros2 topic pub --once /cartesian/motion/controller/target/pose geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
+ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
 ```
 
-#### 6.2.3 Joint Velocity Controller
+#### 6.2.4 Joint Velocity Controller
 
 > **Use‑case:** direct joint‑space velocity commands.
 > **Type:** `velocity_controllers/JointGroupVelocityController`
@@ -338,13 +350,13 @@ ros2 topic pub --once /cartesian/motion/controller/target/pose geometry/msgs/msg
 2. Publish velocities:
 
    ```bash
-   ros2 topic pub /joint/velocity/controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
+   ros2 topic pub /joint_velocity_controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
    ```
    
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
 
-#### 6.2.4 Robotiq Gripper Controller
+#### 6.2.5 Robotiq Gripper Controller
 > **Use‑case:** control of the opening/closing of a mounted robotiq gripper
 
 > **Type:** `position_controllers/GripperActionController`
