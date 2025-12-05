@@ -85,6 +85,18 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
+    joint_trajectory_controller = Node(
+        package    = "controller_manager",
+        executable = "spawner",
+        parameters = [{"use_sim_time": True}],
+        arguments  = [
+            "joint_trajectory_controller",
+            "--param-file", controller_config,
+            "--controller-manager", "/controller_manager"
+        ],
+        output     = "screen",
+    )
+
 
     joint_velocity_controller_spawner = Node(
         package="controller_manager",
@@ -132,6 +144,7 @@ def launch_setup(context, *args, **kwargs):
         joint_state_broadcaster_spawner,
         cartesian_motion_controller_spawner,
         motion_control_handle_spawner,
+        joint_trajectory_controller
         joint_velocity_controller_spawner,
         topic_relay,
     ]
