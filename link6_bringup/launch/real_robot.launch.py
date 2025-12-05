@@ -11,7 +11,6 @@ from launch.substitutions import (
     FindExecutable,
     LaunchConfiguration,
     PathJoinSubstitution,
-    PythonExpression,
 )
 from launch_ros.substitutions import FindPackageShare
 
@@ -29,14 +28,9 @@ def launch_setup(context, *args, **kwargs):
             "gripper:=", 
             gripper,
             " ",
-
-
         ]
     )
-
-
     robot_description = {'robot_description': robot_description}
-
 
     controller_config = os.path.join(
         get_package_share_directory('link6_control'), 
@@ -51,7 +45,6 @@ def launch_setup(context, *args, **kwargs):
         parameters=[robot_description],
     )
 
-
     tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -59,8 +52,6 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
         arguments=['0','0','0','0','0','0','world','base_link'],
     )
-
-
 
     controller_manager = Node(
         package="controller_manager",
@@ -72,7 +63,6 @@ def launch_setup(context, *args, **kwargs):
             "--log-level", "WARN"
         ],
     )
-
 
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
@@ -88,7 +78,6 @@ def launch_setup(context, *args, **kwargs):
     joint_trajectory_controller = Node(
         package    = "controller_manager",
         executable = "spawner",
-        parameters = [{"use_sim_time": True}],
         arguments  = [
             "joint_trajectory_controller",
             "--param-file", controller_config,
@@ -96,7 +85,6 @@ def launch_setup(context, *args, **kwargs):
         ],
         output     = "screen",
     )
-
 
     joint_velocity_controller_spawner = Node(
         package="controller_manager",
@@ -144,7 +132,7 @@ def launch_setup(context, *args, **kwargs):
         joint_state_broadcaster_spawner,
         cartesian_motion_controller_spawner,
         motion_control_handle_spawner,
-        joint_trajectory_controller
+        joint_trajectory_controller,
         joint_velocity_controller_spawner,
         topic_relay,
     ]
