@@ -449,7 +449,7 @@ std::optional<double> Kortex3HardwareInterface::readGripperPosition()
 
   // 5) Decode & cache
   const uint8_t raw = gripper_->GetPosition();
-  gripper_position_ = static_cast<double>(raw) / 255.0 * 0.81;  // rad
+  gripper_position_ = static_cast<double>(raw) / 255.0;  // normalized 0.0-1.0
   //std::cout << "Gripper position: " << gripper_position_ << std::endl;
   return gripper_position_;
 }
@@ -505,7 +505,7 @@ void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
   if (now < next_gripper_send_) return;
 
   // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 0.81);
+  const double clamped = std::clamp(position_radians, 0.0, 1.0);
   if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
       std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
   {
@@ -516,7 +516,7 @@ void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
   std::lock_guard<std::mutex> lk(gripper_mtx_);
   if (!gripper_initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((clamped / 0.81) * 255.0);
+  const uint8_t pos = static_cast<uint8_t>(clamped * 255.0);
 
   // Best-effort write sequence (no sleeps, no loop blocking)
   gripper_->ClearGoToRequest();
