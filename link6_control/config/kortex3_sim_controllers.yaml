@@ -1,6 +1,7 @@
 controller_manager:
   ros__parameters:
-    update_rate: 100 # Hz
+    update_rate: 1000 # Hz
+
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -17,12 +18,6 @@ controller_manager:
     robotiq_gripper_controller:
       type: position_controllers/GripperActionController
 
-    left_robotiq_gripper_controller:
-      type: position_controllers/GripperActionController
-
-    right_robotiq_gripper_controller:
-      type: position_controllers/GripperActionController
-
     joint_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
@@ -36,15 +31,17 @@ joint_velocity_controller:
   ros__parameters:
 
     joints:
-      - link6_joint_1
-      - link6_joint_2
-      - link6_joint_3
-      - link6_joint_4
-      - link6_joint_5
-      - link6_joint_6
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
 
     command_interfaces:
       - velocity
+
 
     state_interfaces:
       - position
@@ -54,15 +51,15 @@ joint_velocity_controller:
 cartesian_motion_controller:
   ros__parameters:
     type: cartesian_motion_controller/CartesianMotionController
-    robot_base_link: "link6_base_link"
-    end_effector_link: "link6_right_tool_frame"
+    robot_base_link: "base_link"
+    end_effector_link: "end_effector_link"
     joints:
-      - link6_joint_1
-      - link6_joint_2
-      - link6_joint_3
-      - link6_joint_4
-      - link6_joint_5
-      - link6_joint_6
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
     command_interfaces:
       - velocity
     solver:
@@ -81,50 +78,32 @@ cartesian_motion_controller:
 
 motion_control_handle:
   ros__parameters:
-    robot_base_link: "link6_base_link"
-    end_effector_link: "link6_end_effector_link"
+    robot_base_link: "base_link"
+    end_effector_link: "end_effector_link"
     joints:
-      - link6_joint_1
-      - link6_joint_2
-      - link6_joint_3
-      - link6_joint_4
-      - link6_joint_5
-      - link6_joint_6
-
-right_robotiq_gripper_controller:
-  ros__parameters:
-    type: position_controllers/GripperActionController
-    joint: link6_right_robotiq_85_left_knuckle_joint
-    allow_stalling: false
-    stall_timeout: 10.0
-    stall_velocity_threshold: 0.001
-
-left_robotiq_gripper_controller:
-  ros__parameters:
-    type: position_controllers/GripperActionController
-    joint: link6_left_robotiq_85_left_knuckle_joint
-    allow_stalling: false
-    stall_timeout: 10.0
-    stall_velocity_threshold: 0.001
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
 
 robotiq_gripper_controller:
   ros__parameters:
     type: position_controllers/GripperActionController
-    joint: link6_robotiq_85_left_knuckle_joint
-    allow_stalling: false
-    stall_timeout: 10.0
-    stall_velocity_threshold: 0.001
+    default: true
+    joint: robotiq_85_left_knuckle_joint
+    allow_stalling: true
 
 joint_trajectory_controller:
   ros__parameters:
-    type: joint_trajectory_controller/JointTrajectoryController
     joints:
-      - link6_joint_1
-      - link6_joint_2
-      - link6_joint_3
-      - link6_joint_4
-      - link6_joint_5
-      - link6_joint_6
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
 
     command_interfaces:
       - velocity
@@ -136,51 +115,51 @@ joint_trajectory_controller:
     constraints:
       stopped_velocity_tolerance: 0.01
       goal_time: 0.0
-      link6_joint_1:
+      joint_1:
         goal: 0.001
-      link6_joint_2:
+      joint_2:
         goal: 0.001
-      link6_joint_3:
+      joint_3:
         goal: 0.001
-      link6_joint_4:
+      joint_4:
         goal: 0.001
-      link6_joint_5:
+      joint_5:
         goal: 0.001
-      link6_joint_6:
+      joint_6:
         goal: 0.001
         
     gains:
-      link6_joint_1:
+      joint_1:
         p: 3.0
         i: 0.0
         i_clamp: 0.0
         d: 0.3
         ff_velocity_scale: 0.0
-      link6_joint_2:
+      joint_2:
         p: 3.0
         i: 0.0
         i_clamp: 0.0
         d: 0.3
         ff_velocity_scale: 0.0
-      link6_joint_3:
+      joint_3:
         p: 3.0
         i: 0.0
         i_clamp: 0.0
         d: 0.3
         ff_velocity_scale: 0.0
-      link6_joint_4:
+      joint_4:
         p: 3.0
         i: 0.0
         i_clamp: 0.0
         d: 0.3
         ff_velocity_scale: 0.0
-      link6_joint_5:
+      joint_5:
         p: 3.0
         i: 0.0
         i_clamp: 0.0
         d: 0.3
         ff_velocity_scale: 0.0
-      link6_joint_6:
+      joint_6:
         p: 3.0
         i: 0.0
         i_clamp: 0.0

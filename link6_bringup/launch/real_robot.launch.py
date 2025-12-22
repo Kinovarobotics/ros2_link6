@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import (
     DeclareLaunchArgument,
+    OpaqueFunction,
 )
 from launch.substitutions import (
     Command,
@@ -13,36 +14,23 @@ from launch.substitutions import (
 )
 from launch_ros.substitutions import FindPackageShare
 
-def generate_launch_description():
-
+def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
-
-    gripper_arg = DeclareLaunchArgument(
-        "gripper",      
-        default_value="",
-        description='Name of the gripper attached to the arm (empty for no gripper).'
+    robot_description = Command(
+        [
+            PathJoinSubstitution([FindExecutable(name="xacro")]),
+            " ",
+            PathJoinSubstitution(
+                [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
+            ),
+            " ",
+            "gripper:=", 
+            gripper,
+            " ",
+        ]
     )
-
-    # Create the launch actions
-    robot_description_content = {
-        "robot_description": Command(
-            [
-                PathJoinSubstitution([FindExecutable(name="xacro")]),
-                " ",
-                PathJoinSubstitution(
-                    [FindPackageShare("link6_description"), "urdf", "link6.xacro"]
-                ),
-                " ",
-                "gripper:=", 
-                gripper,
-                " ",
-            ]
-        )
-    }
-
-    robot_description = robot_description_content
-
+    robot_description = {'robot_description': robot_description}
 
     controller_config = os.path.join(
         get_package_share_directory('link6_control'), 
@@ -57,16 +45,13 @@ def generate_launch_description():
         parameters=[robot_description],
     )
 
-
-    static_transform_node = Node(
+    tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='world_to_base_link',
         output='screen',
         arguments=['0','0','0','0','0','0','world','base_link'],
     )
-
-
 
     controller_manager = Node(
         package="controller_manager",
@@ -78,7 +63,6 @@ def generate_launch_description():
             "--log-level", "WARN"
         ],
     )
-
 
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
@@ -94,9 +78,9 @@ def generate_launch_description():
     joint_trajectory_controller = Node(
         package    = "controller_manager",
         executable = "spawner",
-        parameters = [{"use_sim_time": True}],
         arguments  = [
             "joint_trajectory_controller",
+            "--inactive",
             "--param-file", controller_config,
             "--controller-manager", "/controller_manager"
         ],
@@ -142,22 +126,28 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Create the launch description and populate
-    ld = LaunchDescription()
+    nodes_to_start = [
+        robot_state_publisher_node,
+        tf,
+        controller_manager,
+        joint_state_broadcaster_spawner,
+        cartesian_motion_controller_spawner,
+        motion_control_handle_spawner,
+        joint_trajectory_controller,
+        joint_velocity_controller_spawner,
+        topic_relay,
+    ]
+    if gripper.perform(context) != "":
+        nodes_to_start.append(robot_hand_controller_spawner)
+    return nodes_to_start
 
-    ld.add_action(gripper_arg)
-
-    ld.add_action(robot_state_publisher_node)
-    ld.add_action(static_transform_node)
-    ld.add_action(controller_manager)
-    ld.add_action(joint_state_broadcaster_spawner)
-    ld.add_action(joint_trajectory_controller)
-    # ld.add_action(cartesian_motion_controller_spawner)
-    # ld.add_action(motion_control_handle_spawner)
-    # ld.add_action(joint_velocity_controller_spawner)
-    # ld.add_action(topic_relay)
-
-    if gripper != "":
-        ld.add_action(robot_hand_controller_spawner)
-
-    return ld
+def generate_launch_description():
+    declared_arguments = []
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper",
+            default_value="",
+            description="Name of the gripper attached to the arm (empty for no gripper)",
+        )
+    )
+    return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

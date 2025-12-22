@@ -8,46 +8,61 @@
 
 ## 2. Table of Contents
 
-- [3. Introduction](#3-introduction)  
-- [4. Getting Started](#4-getting-started)  
-  - [4.1 Prerequisites](#41-prerequisites)  
-    - [4.1.1 Install Dependencies](#411-install-dependencies)  
-  - [4.2 Robot Setup](#42-robot-setup)  
-- [5. Installation](#5-installation)  
-  - [5.1 Workspace Layout](#51-workspace-layout)  
-  - [5.2 Clone Repositories](#52-clone-repositories)  
-  - [5.3 Dependencies](#53-dependencies)  
-    - [5.3.1 System Dependencies](#531-system-dependencies)  
-    - [5.3.2 Package Dependencies](#532-package-dependencies)  
-  - [5.4 Build & Source](#54-build--source)  
-- [6. Usage](#6-usage)  
-  - [6.1 Quick Launch](#61-quick-launch)  
-    - [6.1.1 Real Hardware](#611-real-hardware)  
-    - [6.1.2 Simulation](#612-simulation)  
-  - [6.2 Controllers & Commands](#62-controllers--commands)  
-    - [6.2.1 Listing & Switching Controllers](#621-listing--switching-controllers)  
-    - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)  
-    - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)  
-  - [6.3 Testing Tools](#63-testing-tools)  
-    - [6.3.1 Read‑Only Test](#631-read-only-test)  
-    - [6.3.2 Velocity Control Test](#632-velocity-control-test)  
-    - [6.3.3 Calibration Read Test](#633-calibration-read-test)  
-- [7. Services & Fault Handling](#7-services--fault-handling)  
-  - [7.1 Operating Modes](#71-operating-modes)  
-  - [7.2 Switching Modes](#72-switching-modes)  
-  - [7.3 Fault Handling](#73-fault-handling)  
-- [8. Calibration Workflow](#8-calibration-workflow)  
-  - [8.1 Dump Calibration](#81-dump-calibration)  
-  - [8.2 Generate Calibrated URDF](#82-generate-calibrated-urdf)  
-  - [8.3 Use Calibrated Model](#83-use-calibrated-model)  
-- [9. Visualization](#9-visualization)  
-  - [9.1 RViz Setup](#91-rviz-setup)  
-  - [9.2 Interactive Marker Control](#92-interactive-marker-control)  
-  - [9.3 Force/Torque Zeroing](#93-force/torque-zeroing)  
-- [10. Package Overview](#10-package-overview)  
-  - [link6_description](#link6_description)  
-  - [link6_driver](#link6_driver)  
-  - [link6_control](#link6_control)  
+- [ROS2 Kortex 3](#ros2-kortex-3)
+  - [2. Table of Contents](#2-table-of-contents)
+  - [3. Introduction](#3-introduction)
+  - [4. Getting Started](#4-getting-started)
+    - [4.1 Prerequisites](#41-prerequisites)
+      - [4.1.1 Install Dependencies](#411-install-dependencies)
+    - [4.2 Robot Setup](#42-robot-setup)
+  - [5. Installation](#5-installation)
+    - [5.1 Workspace Layout](#51-workspace-layout)
+      - [5.1.1 Create \& enter your workspace](#511-create--enter-your-workspace)
+      - [5.1.2 Lay out your `src/` directory](#512-lay-out-your-src-directory)
+    - [5.2 Clone Additional Repositories](#52-clone-additional-repositories)
+    - [5.3 Dependencies](#53-dependencies)
+      - [5.3.1 System Dependencies](#531-system-dependencies)
+      - [5.3.2 Package Dependencies](#532-package-dependencies)
+    - [5.4 Build \& Source](#54-build--source)
+      - [5.4.1 Build](#541-build)
+      - [5.4.2 Source](#542-source)
+  - [6. Usage](#6-usage)
+    - [6.1 Quick Launch](#61-quick-launch)
+      - [6.1.1 Real Hardware](#611-real-hardware)
+      - [6.1.2 Simulation](#612-simulation)
+    - [6.2 Controllers \& Commands](#62-controllers--commands)
+      - [6.2.1 Listing \& Switching Controllers](#621-listing--switching-controllers)
+      - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)
+      - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)
+      - [6.2.4 Robotiq Gripper Controller](#624-robotiq-gripper-controller)
+      - [Real-life Control:](#real-life-control)
+      - [Simulation Control:](#simulation-control)
+    - [6.3 Testing Tools](#63-testing-tools)
+      - [6.3.1 Read‑Only Test](#631-readonly-test)
+      - [6.3.2 Velocity Control Test](#632-velocity-control-test)
+      - [6.3.3 Calibration Read Test](#633-calibration-read-test)
+    - [6.4 MoveIt](#64-moveit)
+      - [6.4.1 Real Hardware](#641-real-hardware)
+      - [6.4.2 Simulation](#642-simulation)
+  - [7. Services \& Fault Handling](#7-services--fault-handling)
+    - [7.1 Operating Modes](#71-operating-modes)
+    - [7.2 Switching Modes](#72-switching-modes)
+    - [7.3 Fault Handling](#73-fault-handling)
+  - [8. Calibration Workflow](#8-calibration-workflow)
+    - [8.1 How It Works](#81-how-it-works)
+    - [8.2 Testing Calibration (Development)](#82-testing-calibration-development)
+    - [8.3 Using Calibrated Model](#83-using-calibrated-model)
+  - [9. Visualization](#9-visualization)
+    - [9.1 RViz Setup](#91-rviz-setup)
+    - [9.2 Interactive Marker Control](#92-interactive-marker-control)
+    - [9.3 Force/Torque Zeroing](#93-forcetorque-zeroing)
+  - [10. Package Overview](#10-package-overview)
+    - [link6\_description](#link6_description)
+    - [link6\_driver](#link6_driver)
+    - [link6\_control](#link6_control)
+  - [Future Developments](#future-developments)
+  - [Limitations](#limitations)
+  - [Authors](#authors)
 
 ---
 
@@ -274,9 +289,10 @@ By default our `controller_manager` brings up:
 | Controller                        | Type                                                    | Purpose                          | Input Topic / Interface                                   |
 | :-------------------------------- | :------------------------------------------------------ | :------------------------------- | :-------------------------------------------------------- |
 | **joint\_state\_broadcaster**     | `joint_state_broadcaster/JointStateBroadcaster`         | Publish all joint states         | `/joint_states` (sensor\_msgs/JointState)                 |
-| **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (Float64MultiArray) |
-| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_pose` (PoseStamped)  |
-| **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `control_msgs/action/GripperCommand` (Action Interface)  |
+| **joint\_trajectory\_controller**   | `joint_trajectory_controller/JointTrajectoryController`     | Joint trajectory commands | `/joint_trajectory_controller/joint_trajectory` (trajectory_msgs/msg/JointTrajectory) |
+| **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (std_msgs/msg/Float64MultiArray) |
+| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_frame` (geometry_msgs/msg/PoseStamped)  |
+| **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `/robotiq_gripper_controller/gripper_cmd` (control_msgs/action/GripperCommand)  |
 | **motion\_control\_handle**       | `cartesian_controller_handles/MotionControlHandle`      | RViz interactive‑marker handle   | —                                                         |
 
 #### 6.2.1 Listing & Switching Controllers
@@ -285,7 +301,9 @@ By default our `controller_manager` brings up:
 ros2 control list_controllers
 ```
 
-Activate Cartesian (+ handle) and stop velocity:
+Switch controllers by activating the desired one and deactivating the not-needed other.
+
+For example: Activate Cartesian motion controller and stop joint velocity controller:
 
 ```bash
 ros2 control switch_controllers \
@@ -293,15 +311,24 @@ ros2 control switch_controllers \
   --deactivate  joint_velocity_controller
 ```
 
-Activate velocity and stop Cartesian:
+#### 6.2.2 Joint Trajectory Controller
 
-```bash
-ros2 control switch_controllers \
-  --activate joint_velocity_controller \
-  --deactivate  cartesian_motion_controller 
-```
+> **Use‑case:** direct joint trajectory commands.
+> **Type:** `joint_trajectory_controller/JointTrajectoryController`
 
-#### 6.2.2 Cartesian Motion Controller
+1. Activate (see above).
+2. Publish a trajectory:
+
+  ```bash
+  ros2 topic pub /joint_trajectory_controller/joint_trajectory trajectory_msgs/JointTrajectory "{
+    joint_names: [joint_1, joint_2, joint_3, joint_4, joint_5, joint_6],
+    points: [
+      { positions: [0, 0, 0, 0, 0, 0], time_from_start: { sec: 10 } },
+    ]
+  }" -1
+  ```
+
+#### 6.2.3 Cartesian Motion Controller
 
 > **Use‑case:** smooth end‑effector motion via RViz handle or programmatic targets.
 > **Type:** `cartesian_motion_controller/CartesianMotionController`
@@ -311,10 +338,10 @@ ros2 control switch_controllers \
 2. **Send target pose**:
 
 ```bash
-ros2 topic pub --once /cartesian/motion/controller/target/pose geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
+ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
 ```
 
-#### 6.2.3 Joint Velocity Controller
+#### 6.2.4 Joint Velocity Controller
 
 > **Use‑case:** direct joint‑space velocity commands.
 > **Type:** `velocity_controllers/JointGroupVelocityController`
@@ -323,13 +350,13 @@ ros2 topic pub --once /cartesian/motion/controller/target/pose geometry/msgs/msg
 2. Publish velocities:
 
    ```bash
-   ros2 topic pub /joint/velocity/controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
+   ros2 topic pub /joint_velocity_controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
    ```
    
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
 
-#### 6.2.4 Robotiq Gripper Controller
+#### 6.2.5 Robotiq Gripper Controller
 > **Use‑case:** control of the opening/closing of a mounted robotiq gripper
 
 > **Type:** `position_controllers/GripperActionController`
@@ -468,6 +495,34 @@ ros2 run kortex3_hardware test_read_calibration
 
 ---
 
+### 6.4 MoveIt
+
+#### 6.4.1 Real Hardware
+
+To use MoveIt with a real life Link6, first bringup the robot:
+
+```bash
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+```
+Then start MoveIt:
+```bash
+ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
+```
+
+#### 6.4.2 Simulation
+
+**Simulation (Ignition/Gazebo Fortress)**
+
+To use MoveIt with a simulated Link6, first bringup the robot:
+
+```bash
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+```
+Then start MoveIt:
+```bash
+ros2 launch link6_moveit_config move_group.launch.py use_sim_time:=true use_rviz:=true
+```
+
 ## 7. Services & Fault Handling
 
 ### 7.1 Operating Modes
@@ -525,33 +580,46 @@ Note: Some errors might require the user to login into the web app to manual jog
 
 ## 8. Calibration Workflow
 
-### 8.1 Dump Calibration
+The Link6 ROS 2 driver features an automatic calibration feature that uses calibration data from the robot controller to apply robot-specific geometric corrections to the URDF file, improving positional accuracy.
 
-On bringup, the driver pulls the on‑board calibration bundle and unzips `calib.xml` into:
+### 8.1 How It Works
 
-```
-$(ros2 pkg prefix link6_description)/share/link6_description/calibration/
-```
+1. **On bringup**, the hardware interface downloads the calibration bundle from the robot
+2. **Calibration data** is extracted to: `$(ros2 pkg prefix link6_description)/share/link6_description/calibration/calib.xml`
+3. **Python script** applies calibration offsets to the macro: `link6_macro.xacro` → `link6_calibrated_macro.xacro`
+4. **Calibrated model** is available at: `$(ros2 pkg prefix link6_description)/share/link6_description/urdf/link6_calibrated_macro.xacro`
 
-### 8.2 Generate Calibrated URDF
+### 8.2 Testing Calibration (Development)
 
-The driver expands your `link6_nominal.xacro` to URDF, then runs:
+For development and testing, you can verify the calibration script works correctly using test calibration data:
 
 ```bash
-python3 calibrated_urdf_generator.py \
-  --urdf_path   <...>/calibration/link6_nominal.urdf \
-  --calibration_file  <...>/calibration/calib.xml \
-  --output_file  <...>/urdf/link6_calibrated.xacro
+# Run automated test with example calibration data
+cd $(ros2 pkg prefix link6_description)/share/link6_description
+bash scripts/test_calibration.sh
 ```
 
-and automatically switches the robot description to `link6_calibrated.xacro`.
+Note: The test calibration data in `test/calibration/` is for development only. Actual calibration data is downloaded from the robot automatically when the hardware interface connects.
 
-### 8.3 Use Calibrated Model
+### 8.3 Using Calibrated Model
 
-All controllers and RViz displays will now use `link6_calibrated.xacro` under:
+To use the calibrated robot model in your launch files:
 
+```python
+# Instead of link6.urdf.xacro, use:
+robot_description = xacro.process_file(
+    os.path.join(pkg_share, 'urdf', 'link6_calibrated.urdf.xacro'),
+    mappings={'robot_ip': robot_ip, 'gripper': gripper, ...}
+).toxml()
 ```
-$(ros2 pkg prefix link6_description)/share/link6_description/urdf/
+
+Or include the calibrated macro directly:
+
+```xml
+<xacro:include filename="$(find link6_description)/urdf/link6_calibrated_macro.xacro" />
+<xacro:link6 parent="world" gripper="true" robot_ip="192.168.1.10" ...>
+  <origin xyz="0 0 0" rpy="0 0 0" />
+</xacro:link6>
 ```
 
 ---

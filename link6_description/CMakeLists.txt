@@ -25,10 +25,19 @@ install(
         DESTINATION share/${PROJECT_NAME}/scripts
 )
 
+# Install the test script
 install(
-        DIRECTORY scripts/urdf_parser
+        PROGRAMS scripts/test_calibration.sh
         DESTINATION share/${PROJECT_NAME}/scripts
 )
+
+# Install test directory (contains example calibration files for testing)
+# Note: The actual calibration directory is created at runtime by the hardware interface
+install(
+        DIRECTORY test
+        DESTINATION share/${PROJECT_NAME}
+)
+
 # Install the entire 'meshes' directory to the share folder
 # This is the critical step that will fix your RViz errors.
 install(
