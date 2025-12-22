@@ -345,13 +345,15 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 
 2. Fully close the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.81, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
 ```
 
 3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
+
+**NOTE** Some grippers include an extra rubber layer on the fingertips which will affect the closing position value
 
 #### Simulation Control:
 
