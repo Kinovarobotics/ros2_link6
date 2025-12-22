@@ -523,6 +523,41 @@ message: "Faults cleared and arm recovered to OPERATIONAL."
 
 Note: Some errors might require the user to login into the web app to manual jog the robot out of it.
 
+### 7.4 Emergency Stop (Category 0) via ROS2
+
+For testing and development purposes, you can programmatically trigger a fault state without physically pressing the emergency stop button. This is useful for:
+- Testing fault handling logic
+- Automated testing and CI/CD integration
+- Demonstrating fault recovery procedures
+- Validating safety systems
+
+#### Triggering a Simulated Emergency Stop
+
+```bash
+ros2 service call /kortex3_hardware/simulate_estop \
+  kortex3_hardware/srv/SimulateEstop "{enable: true}"
+```
+
+**What happens:**
+- The service sends an excessive velocity command to joint 5 (320 deg/s)
+- The robot's safety system detects the violation and enters FAULT state
+- The hardware interface immediately detects the fault and displays recovery instructions
+
+#### Recovery
+
+After triggering the fault, recover using the teach pendant to:
+- Clear the faults
+- Turn on the arm
+
+#### Safety Notes
+
+**Important:**
+- This triggers a **real fault state** on the robot, not a simulation
+- The robot will stop accepting motion commands until fault is cleared
+- Controllers will return ERROR during fault state
+- Use only in controlled testing environments
+- Do not use during critical operations
+
 ---
 
 ## 8. Calibration Workflow
