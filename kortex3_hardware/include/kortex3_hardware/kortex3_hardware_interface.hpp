@@ -46,6 +46,7 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "kortex3_hardware/srv/set_operating_mode.hpp"
 #include "kortex3_hardware/srv/clear_faults.hpp"
+#include "kortex3_hardware/srv/simulate_estop.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
@@ -135,6 +136,9 @@ private:
   void handle_clear_faults(
       const std::shared_ptr<kortex3_hardware::srv::ClearFaults::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response);
+  void handle_simulate_estop(
+      const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response);
   std::optional<double> readGripperPosition();
   void sendGripperCommand(double position_radians);
 
@@ -184,6 +188,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_publisher_;
   rclcpp::Service<kortex3_hardware::srv::SetOperatingMode>::SharedPtr set_operating_mode_service_;
   rclcpp::Service<kortex3_hardware::srv::ClearFaults>::SharedPtr clear_faults_service_;
+  rclcpp::Service<kortex3_hardware::srv::SimulateEstop>::SharedPtr simulate_estop_service_;
 
   // --- Internal State Flags ---
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};
