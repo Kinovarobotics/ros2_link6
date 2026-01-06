@@ -165,8 +165,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     // 6. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
-/*
-    // Initialize gripper Modbus connection
+
+    // 7. Initialize gripper Modbus connection
     constexpr uint16_t gripper_slave_id = 9; // Robotiq default Modbus ID
     modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
 
@@ -175,19 +175,63 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper Modbus connection established.");
+    }
+
     gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
-*/
-    // Activate the gripper
-    /*
+    gripper_initialized_ = true;
+
+    // 8. Activate the gripper (following Robotiq reference implementation)
+    RCLCPP_INFO(LOGGER, "Activating Robotiq gripper...");
+
+    // Stop any ongoing gripper motion before activation
+    gripper_->FreezeGripper();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    gripper_->ReadRegister();
+
+    // Send activation request
     gripper_->SetActivateRequest();
     gripper_->SendRequest();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Optional short delay
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     gripper_->ReadRegister();
-    if (!gripper_->GetActivationCompleted()) 
+
+    // Poll until activation completes (timeout: 10 seconds)
+    const auto activation_timeout = std::chrono::seconds(10);
+    auto activation_start = std::chrono::steady_clock::now();
+    bool activation_complete = false;
+
+    while (std::chrono::steady_clock::now() - activation_start < activation_timeout)
     {
-      RCLCPP_WARN(LOGGER, "Gripper not fully activated yet");
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+      if (!gripper_->ReadRegister())
+      {
+        RCLCPP_WARN(LOGGER, "Failed to read gripper status during activation.");
+        continue;
+      }
+
+      // Check if activation is complete (GetActivateEcho returns true when ACT echo matches)
+      if (gripper_->GetActivateEcho())
+      {
+        activation_complete = true;
+        RCLCPP_WARN(LOGGER, "Gripper activation completed successfully.");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Final stabilization delay
+        break;
+      }
+      else
+      {
+        uint8_t status = gripper_->GetStatus();
+        RCLCPP_DEBUG(LOGGER, "Gripper activating... (STA=%d)", status);
+      }
     }
-    */
+
+    if (!activation_complete)
+    {
+      RCLCPP_ERROR(LOGGER, "Gripper activation failed or timed out. Cannot control gripper.");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
     // First read from gripper
     auto opt_gripper_position = readGripperPosition();
     if (!opt_gripper_position.has_value())
