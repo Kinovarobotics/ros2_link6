@@ -33,10 +33,12 @@
 #include "BaseClientRpc.h"
 #include "BaseCyclicClientRpc.h"
 #include "ProgramRunnerClientRpc.h"
+#include "ProtectionZoneClientRpc.h"
 #include "Base.pb.h"
 #include "Common.pb.h"
 #include "ProgramRunner.pb.h"
 #include "ProgramConfig.pb.h"
+#include "ProtectionZone.pb.h"
 #include "TransportClientUdp.h"
 
 // ROS 2 Headers
@@ -54,7 +56,10 @@
 #include "kortex3_hardware/srv/list_programs.hpp"
 #include "kortex3_hardware/srv/stop_program.hpp"
 #include "kortex3_hardware/srv/get_program_status.hpp"
+#include "kortex3_hardware/srv/list_protection_zones.hpp"
+#include "kortex3_hardware/srv/set_protection_zone_state.hpp"
 #include "kortex3_hardware/msg/program_info.hpp"
+#include "kortex3_hardware/msg/protection_zone_info.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
@@ -159,6 +164,12 @@ private:
   void handle_get_program_status(
       const std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Request> request,
       std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Response> response);
+  void handle_list_protection_zones(
+      const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response);
+  void handle_set_protection_zone_state(
+      const std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Response> response);
   std::optional<double> readGripperPosition();
   void sendGripperCommand(double position_radians);
 
@@ -174,6 +185,7 @@ private:
   std::shared_ptr<k_api::Session::SessionClient> session_mqtt_;
   std::shared_ptr<k_api::Base::BaseClient> base_mqtt_;
   std::shared_ptr<k_api::ProgramRunner::ProgramRunnerClient> program_runner_;
+  std::shared_ptr<k_api::ProtectionZone::ProtectionZoneClient> protection_zone_;
   std::unique_ptr<k_api::TransportClientUdp> transport_udp_feedback_;
   std::unique_ptr<k_api::RouterClient> router_udp_feedback_;
   std::unique_ptr<k_api::SessionManager> session_udp_;
@@ -214,6 +226,8 @@ private:
   rclcpp::Service<kortex3_hardware::srv::ListPrograms>::SharedPtr list_programs_service_;
   rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;
   rclcpp::Service<kortex3_hardware::srv::GetProgramStatus>::SharedPtr get_program_status_service_;
+  rclcpp::Service<kortex3_hardware::srv::ListProtectionZones>::SharedPtr list_protection_zones_service_;
+  rclcpp::Service<kortex3_hardware::srv::SetProtectionZoneState>::SharedPtr set_protection_zone_state_service_;
 
   // --- Internal State Flags ---
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};

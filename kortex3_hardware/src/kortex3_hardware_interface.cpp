@@ -108,6 +108,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
       "kortex3_hardware/get_program_status",
       std::bind(&Kortex3HardwareInterface::handle_get_program_status,
                 this, std::placeholders::_1, std::placeholders::_2));
+  list_protection_zones_service_ = node_ptr_->create_service<kortex3_hardware::srv::ListProtectionZones>(
+      "kortex3_hardware/list_protection_zones",
+      std::bind(&Kortex3HardwareInterface::handle_list_protection_zones,
+                this, std::placeholders::_1, std::placeholders::_2));
+  set_protection_zone_state_service_ = node_ptr_->create_service<kortex3_hardware::srv::SetProtectionZoneState>(
+      "kortex3_hardware/set_protection_zone_state",
+      std::bind(&Kortex3HardwareInterface::handle_set_protection_zone_state,
+                this, std::placeholders::_1, std::placeholders::_2));
 
   RCLCPP_INFO(LOGGER, "Hardware Interface successfully initialized.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -140,6 +148,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     session_mqtt_->CreateSession(mqtt_session_info);
     base_mqtt_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
     program_runner_ = std::make_shared<k_api::ProgramRunner::ProgramRunnerClient>(router_mqtt_.get());
+    protection_zone_ = std::make_shared<k_api::ProtectionZone::ProtectionZoneClient>(router_mqtt_.get());
 
     // 2. Check power state and turn on the robot if necessary.
     check_and_power_on_robot();
@@ -330,6 +339,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
   list_programs_service_.reset();
   stop_program_service_.reset();
   get_program_status_service_.reset();
+  list_protection_zones_service_.reset();
+  set_protection_zone_state_service_.reset();
   node_ptr_.reset();
 
   RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface deactivated.");
@@ -1120,6 +1131,91 @@ void Kortex3HardwareInterface::handle_get_program_status(
   catch (const k_api::KDetailedException &ex) {
     response->success = false;
     response->message = "Failed to get program status: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_list_protection_zones(
+  const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ListProtectionZones request.");
+
+  try {
+    // Get all protection zones from the robot
+    auto zone_list = protection_zone_->ReadAllProtectionZones();
+
+    response->zones.clear();
+    for (int i = 0; i < zone_list.protection_zones_size(); ++i) {
+      const auto& zone = zone_list.protection_zones(i);
+
+      kortex3_hardware::msg::ProtectionZoneInfo zone_info;
+      zone_info.identifier = zone.handle().identifier();
+      zone_info.name = zone.name();
+      zone_info.is_enabled = zone.is_enabled();
+
+      response->zones.push_back(zone_info);
+    }
+
+    response->success = true;
+    response->message = "Found " + std::to_string(response->zones.size()) + " protection zone(s).";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+
+    // Log details of each zone
+    for (const auto& zone : response->zones) {
+      RCLCPP_INFO(LOGGER, "  Zone ID %u: %s [%s]",
+                  zone.identifier,
+                  zone.name.c_str(),
+                  zone.is_enabled ? "ENABLED" : "DISABLED");
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to list protection zones: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_set_protection_zone_state(
+  const std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Request> request,
+  std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received SetProtectionZoneState request for zone ID %u: %s",
+              request->zone_id,
+              request->enable ? "ENABLE" : "DISABLE");
+
+  try {
+    // First, read the current zone configuration
+    k_api::ProtectionZone::ProtectionZoneHandle zone_handle;
+    zone_handle.set_identifier(request->zone_id);
+    zone_handle.set_permission(0);  // Default permission
+
+    auto zone_config = protection_zone_->ReadProtectionZone(zone_handle);
+
+    // Update the enabled state
+    zone_config.set_is_enabled(request->enable);
+
+    // Write the updated configuration back to the robot
+    protection_zone_->UpdateProtectionZone(zone_config);
+
+    response->success = true;
+    response->message = "Protection zone " + std::to_string(request->zone_id) +
+                       (request->enable ? " enabled" : " disabled") + " successfully.";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to update protection zone: " + std::string(ex.what());
     RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
   }
   catch (const std::exception &ex) {

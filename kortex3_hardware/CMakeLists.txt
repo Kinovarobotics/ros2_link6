@@ -43,7 +43,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
         "srv/ListPrograms.srv"
         "srv/StopProgram.srv"
         "srv/GetProgramStatus.srv"
+        "srv/ListProtectionZones.srv"
+        "srv/SetProtectionZoneState.srv"
         "msg/ProgramInfo.msg"
+        "msg/ProtectionZoneInfo.msg"
 )
 
 # --- Kortex SDK Configuration ---
