@@ -32,8 +32,11 @@
 #include "SessionClientRpc.h"
 #include "BaseClientRpc.h"
 #include "BaseCyclicClientRpc.h"
+#include "ProgramRunnerClientRpc.h"
 #include "Base.pb.h"
 #include "Common.pb.h"
+#include "ProgramRunner.pb.h"
+#include "ProgramConfig.pb.h"
 #include "TransportClientUdp.h"
 
 // ROS 2 Headers
@@ -47,6 +50,11 @@
 #include "kortex3_hardware/srv/set_operating_mode.hpp"
 #include "kortex3_hardware/srv/clear_faults.hpp"
 #include "kortex3_hardware/srv/simulate_estop.hpp"
+#include "kortex3_hardware/srv/run_program.hpp"
+#include "kortex3_hardware/srv/list_programs.hpp"
+#include "kortex3_hardware/srv/stop_program.hpp"
+#include "kortex3_hardware/srv/get_program_status.hpp"
+#include "kortex3_hardware/msg/program_info.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
@@ -139,6 +147,18 @@ private:
   void handle_simulate_estop(
       const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
       std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response);
+  void handle_run_program(
+      const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response);
+  void handle_list_programs(
+      const std::shared_ptr<kortex3_hardware::srv::ListPrograms::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::ListPrograms::Response> response);
+  void handle_stop_program(
+      const std::shared_ptr<kortex3_hardware::srv::StopProgram::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::StopProgram::Response> response);
+  void handle_get_program_status(
+      const std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Response> response);
   std::optional<double> readGripperPosition();
   void sendGripperCommand(double position_radians);
 
@@ -153,6 +173,7 @@ private:
   std::shared_ptr<k_api::RouterMQTT> router_mqtt_;
   std::shared_ptr<k_api::Session::SessionClient> session_mqtt_;
   std::shared_ptr<k_api::Base::BaseClient> base_mqtt_;
+  std::shared_ptr<k_api::ProgramRunner::ProgramRunnerClient> program_runner_;
   std::unique_ptr<k_api::TransportClientUdp> transport_udp_feedback_;
   std::unique_ptr<k_api::RouterClient> router_udp_feedback_;
   std::unique_ptr<k_api::SessionManager> session_udp_;
@@ -189,6 +210,10 @@ private:
   rclcpp::Service<kortex3_hardware::srv::SetOperatingMode>::SharedPtr set_operating_mode_service_;
   rclcpp::Service<kortex3_hardware::srv::ClearFaults>::SharedPtr clear_faults_service_;
   rclcpp::Service<kortex3_hardware::srv::SimulateEstop>::SharedPtr simulate_estop_service_;
+  rclcpp::Service<kortex3_hardware::srv::RunProgram>::SharedPtr run_program_service_;
+  rclcpp::Service<kortex3_hardware::srv::ListPrograms>::SharedPtr list_programs_service_;
+  rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;
+  rclcpp::Service<kortex3_hardware::srv::GetProgramStatus>::SharedPtr get_program_status_service_;
 
   // --- Internal State Flags ---
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};

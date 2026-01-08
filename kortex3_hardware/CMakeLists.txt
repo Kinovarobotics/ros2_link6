@@ -34,11 +34,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(json_schema_validator)
 
 
-# --- Service Generation ---
+# --- Service and Message Generation ---
 rosidl_generate_interfaces(${PROJECT_NAME}
         "srv/SetOperatingMode.srv"
         "srv/ClearFaults.srv"
         "srv/SimulateEstop.srv"
+        "srv/RunProgram.srv"
+        "srv/ListPrograms.srv"
+        "srv/StopProgram.srv"
+        "srv/GetProgramStatus.srv"
+        "msg/ProgramInfo.msg"
 )
 
 # --- Kortex SDK Configuration ---

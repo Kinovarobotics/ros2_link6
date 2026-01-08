@@ -1,0 +1,13 @@
+# Service to run a program stored on the robot controller
+
+# Program identifier (ID) as seen in the web interface
+uint32 program_id
+
+# Optional: Run in debug mode
+bool debug_mode false
+
+---
+
+# Response
+bool success
+string message
