@@ -566,7 +566,7 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
   }
   catch (const Kinova::Api::KDetailedException &e) {
     RCLCPP_ERROR(LOGGER, "Fault during write(): %s", e.what());
-    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant");
+    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant or restart the ROS2 launch file");
     in_fault_ = true;
     return hardware_interface::return_type::ERROR;
   }

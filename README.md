@@ -499,6 +499,8 @@ ros2 service call /kortex3_hardware/set_operating_mode \
   kortex3_hardware/srv/SetOperatingMode "{ operating_mode: 4 }"
 ```
 
+**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons.
+
 ### 7.3 Fault Handling
 
 If the arm enters a fault state (e.g. emergency stop, self-collision), you will see:
