@@ -15,6 +15,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
 
 include(FetchContent)
 
@@ -129,6 +130,7 @@ ament_target_dependencies(kortex3_hardware_interface PUBLIC
         geometry_msgs
         tf2_ros
         ament_index_cpp
+        controller_manager_msgs
 )
 
 # --- Modern ROS2 Service Linking ---
@@ -194,6 +196,7 @@ ament_export_dependencies(
         geometry_msgs
         tf2_ros
         rosidl_default_runtime
+        controller_manager_msgs
 )
 
 ament_package()

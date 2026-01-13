@@ -57,11 +57,11 @@
 #include "kortex3_hardware/srv/stop_program.hpp"
 #include "kortex3_hardware/srv/get_program_status.hpp"
 #include "kortex3_hardware/srv/list_protection_zones.hpp"
-#include "kortex3_hardware/srv/set_protection_zone_state.hpp"
 #include "kortex3_hardware/msg/program_info.hpp"
 #include "kortex3_hardware/msg/protection_zone_info.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include "controller_manager_msgs/srv/list_controllers.hpp"
 
 // Robotiq gripper plugin headers
 #include "robotiq_gripper/Grippers/FingerGripper.h"
@@ -167,11 +167,14 @@ private:
   void handle_list_protection_zones(
       const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response);
-  void handle_set_protection_zone_state(
-      const std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Request> request,
-      std::shared_ptr<kortex3_hardware::srv::SetProtectionZoneState::Response> response);
   std::optional<double> readGripperPosition();
   void sendGripperCommand(double position_radians);
+
+  // Helper function to check if a program status represents an active program
+  bool is_program_active(k_api::ProgramRunner::Status status) const;
+
+  // Helper function to check if unsafe controllers are active
+  bool check_unsafe_controllers_active(std::string& error_message);
 
   // --- Connection Parameters ---
   std::string robot_ip_;      ///< IP address of the robot controller.
@@ -227,13 +230,16 @@ private:
   rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;
   rclcpp::Service<kortex3_hardware::srv::GetProgramStatus>::SharedPtr get_program_status_service_;
   rclcpp::Service<kortex3_hardware::srv::ListProtectionZones>::SharedPtr list_protection_zones_service_;
-  rclcpp::Service<kortex3_hardware::srv::SetProtectionZoneState>::SharedPtr set_protection_zone_state_service_;
 
   // --- Internal State Flags ---
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};
   Kinova::Api::Common::OperatingModeType  last_operating_mode_{Kinova::Api::Common::OPERATING_MODE_UNSPECIFIED};
   bool                                    in_fault_{false}; ///< Flag to indicate if the robot is in a fault state.
   bool                                    fault_reported_{false};
+
+  // Program runner state tracking
+  Kinova::Api::ProgramRunner::Status last_program_status_{Kinova::Api::ProgramRunner::STATUS_IDLE};
+  std::chrono::steady_clock::time_point program_end_time_{};
 
   ///< Static logger for the class.
   static const rclcpp::Logger LOGGER;
