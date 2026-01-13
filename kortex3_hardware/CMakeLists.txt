@@ -15,6 +15,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
 
 include(FetchContent)
 
@@ -34,11 +35,19 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(json_schema_validator)
 
 
-# --- Service Generation ---
+# --- Service and Message Generation ---
 rosidl_generate_interfaces(${PROJECT_NAME}
         "srv/SetOperatingMode.srv"
         "srv/ClearFaults.srv"
         "srv/SimulateEstop.srv"
+        "srv/RunProgram.srv"
+        "srv/ListPrograms.srv"
+        "srv/StopProgram.srv"
+        "srv/GetProgramStatus.srv"
+        "srv/ListProtectionZones.srv"
+        "srv/SetProtectionZoneState.srv"
+        "msg/ProgramInfo.msg"
+        "msg/ProtectionZoneInfo.msg"
 )
 
 # --- Kortex SDK Configuration ---
@@ -121,6 +130,7 @@ ament_target_dependencies(kortex3_hardware_interface PUBLIC
         geometry_msgs
         tf2_ros
         ament_index_cpp
+        controller_manager_msgs
 )
 
 # --- Modern ROS2 Service Linking ---
@@ -186,6 +196,7 @@ ament_export_dependencies(
         geometry_msgs
         tf2_ros
         rosidl_default_runtime
+        controller_manager_msgs
 )
 
 ament_package()

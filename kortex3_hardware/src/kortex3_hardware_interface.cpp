@@ -92,6 +92,26 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
       "kortex3_hardware/simulate_estop",
       std::bind(&Kortex3HardwareInterface::handle_simulate_estop,
                 this, std::placeholders::_1, std::placeholders::_2));
+  run_program_service_ = node_ptr_->create_service<kortex3_hardware::srv::RunProgram>(
+      "kortex3_hardware/run_program",
+      std::bind(&Kortex3HardwareInterface::handle_run_program,
+                this, std::placeholders::_1, std::placeholders::_2));
+  list_programs_service_ = node_ptr_->create_service<kortex3_hardware::srv::ListPrograms>(
+      "kortex3_hardware/list_programs",
+      std::bind(&Kortex3HardwareInterface::handle_list_programs,
+                this, std::placeholders::_1, std::placeholders::_2));
+  stop_program_service_ = node_ptr_->create_service<kortex3_hardware::srv::StopProgram>(
+      "kortex3_hardware/stop_program",
+      std::bind(&Kortex3HardwareInterface::handle_stop_program,
+                this, std::placeholders::_1, std::placeholders::_2));
+  get_program_status_service_ = node_ptr_->create_service<kortex3_hardware::srv::GetProgramStatus>(
+      "kortex3_hardware/get_program_status",
+      std::bind(&Kortex3HardwareInterface::handle_get_program_status,
+                this, std::placeholders::_1, std::placeholders::_2));
+  list_protection_zones_service_ = node_ptr_->create_service<kortex3_hardware::srv::ListProtectionZones>(
+      "kortex3_hardware/list_protection_zones",
+      std::bind(&Kortex3HardwareInterface::handle_list_protection_zones,
+                this, std::placeholders::_1, std::placeholders::_2));
 
   RCLCPP_INFO(LOGGER, "Hardware Interface successfully initialized.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -123,6 +143,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     mqtt_session_info.set_connection_inactivity_timeout(10000);
     session_mqtt_->CreateSession(mqtt_session_info);
     base_mqtt_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
+    program_runner_ = std::make_shared<k_api::ProgramRunner::ProgramRunnerClient>(router_mqtt_.get());
+    protection_zone_ = std::make_shared<k_api::ProtectionZone::ProtectionZoneClient>(router_mqtt_.get());
 
     // 2. Check power state and turn on the robot if necessary.
     check_and_power_on_robot();
@@ -309,6 +331,11 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
   set_operating_mode_service_.reset();
   clear_faults_service_.reset();
   simulate_estop_service_.reset();
+  run_program_service_.reset();
+  list_programs_service_.reset();
+  stop_program_service_.reset();
+  get_program_status_service_.reset();
+  list_protection_zones_service_.reset();
   node_ptr_.reset();
 
   RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface deactivated.");
@@ -422,6 +449,33 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
       last_operating_mode_ = new_mode;
     }
 
+    // 3.5. Track program runner status for velocity command blocking.
+    try {
+      auto current_program_status = program_runner_->GetStatus();
+      auto new_status = current_program_status.status();
+
+      // Detect when program finishes (transitions from active to inactive)
+      bool was_active = is_program_active(last_program_status_);
+      bool is_active = is_program_active(new_status);
+
+      if (was_active && !is_active) {
+        program_end_time_ = std::chrono::steady_clock::now();
+        RCLCPP_INFO(LOGGER, "Program execution ended (status: %d -> %d). Velocity commands will be blocked for 1 second.",
+                    last_program_status_, new_status);
+      }
+
+      // Log status changes
+      if (new_status != last_program_status_) {
+        RCLCPP_DEBUG(LOGGER, "Program runner status changed: %d -> %d",
+                    last_program_status_, new_status);
+        last_program_status_ = new_status;
+      }
+    }
+    catch (const k_api::KDetailedException &ex) {
+      // Don't spam logs if program runner is not available or busy
+      RCLCPP_DEBUG(LOGGER, "Failed to get program status in read(): %s", ex.what());
+    }
+
     // 4. Publish external tool wrench telemetry.
     if (wrench_publisher_ && feedback.has_base()) {
       geometry_msgs::msg::WrenchStamped w;
@@ -519,6 +573,27 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
+  // Safety guard: Block velocity commands while program is running or within 1 second after completion.
+  // Check if program is currently active
+  if (is_program_active(last_program_status_)) {
+    RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
+                          "Velocity commands blocked: program is currently running (status: %d)",
+                          last_program_status_);
+    return hardware_interface::return_type::OK;
+  }
+
+  // Check if we're within 1 second after program completion
+  auto now = std::chrono::steady_clock::now();
+  auto time_since_program_end = std::chrono::duration_cast<std::chrono::milliseconds>(
+    now - program_end_time_).count();
+
+  if (time_since_program_end >= 0 && time_since_program_end < 1000) {
+    RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
+                          "Velocity commands blocked: %ld ms since program ended (blocking for 1 second)",
+                          time_since_program_end);
+    return hardware_interface::return_type::OK;
+  }
+
   try {
     Kinova::Api::Base::Action action;
     action.set_name("ros2_control_velocity_command");
@@ -534,7 +609,7 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
   }
   catch (const Kinova::Api::KDetailedException &e) {
     RCLCPP_ERROR(LOGGER, "Fault during write(): %s", e.what());
-    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant");
+    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant or restart the ROS2 launch file");
     in_fault_ = true;
     return hardware_interface::return_type::ERROR;
   }
@@ -677,6 +752,112 @@ void Kortex3HardwareInterface::send_zero_velocities()
   {
     RCLCPP_ERROR(LOGGER, "Failed to send zero velocities: %s", ex.what());
   }
+}
+
+bool Kortex3HardwareInterface::is_program_active(k_api::ProgramRunner::Status status) const
+{
+  return (status == k_api::ProgramRunner::STATUS_RUNNING ||
+          status == k_api::ProgramRunner::STATUS_STARTING ||
+          status == k_api::ProgramRunner::STATUS_PAUSED ||
+          status == k_api::ProgramRunner::STATUS_PAUSED_AUTOMATIC_RESUME ||
+          status == k_api::ProgramRunner::STATUS_WAITING_FOR_ACKNOWLEDGE ||
+          status == k_api::ProgramRunner::STATUS_STOPPING);
+}
+
+bool Kortex3HardwareInterface::check_unsafe_controllers_active(std::string& error_message)
+{
+  // List of controllers that should block program execution
+  const std::vector<std::string> unsafe_controllers = {
+    "joint_velocity_controller",
+    "cartesian_motion_controller",
+    "motion_control_handle"
+  };
+
+  // Perform the service call in a separate thread to avoid executor conflicts
+  std::atomic<bool> call_completed{false};
+  std::shared_ptr<controller_manager_msgs::srv::ListControllers::Response> response;
+  std::string thread_error;
+
+  std::thread service_thread([this, &call_completed, &response, &thread_error]() {
+    try {
+      // Create a separate node for this thread to avoid executor conflicts
+      auto temp_node = std::make_shared<rclcpp::Node>("controller_checker_temp");
+      auto temp_client = temp_node->create_client<controller_manager_msgs::srv::ListControllers>(
+          "/controller_manager/list_controllers");
+
+      // Wait for service to be available
+      if (!temp_client->wait_for_service(std::chrono::milliseconds(500))) {
+        thread_error = "Controller manager service not available";
+        call_completed = true;
+        return;
+      }
+
+      // Call the service
+      auto request = std::make_shared<controller_manager_msgs::srv::ListControllers::Request>();
+      auto future = temp_client->async_send_request(request);
+
+      // Spin until complete
+      rclcpp::executors::SingleThreadedExecutor executor;
+      executor.add_node(temp_node);
+
+      auto ret_code = executor.spin_until_future_complete(future, std::chrono::seconds(1));
+
+      if (ret_code == rclcpp::FutureReturnCode::SUCCESS) {
+        response = future.get();
+      } else {
+        thread_error = "Service call timed out";
+      }
+    } catch (const std::exception& ex) {
+      thread_error = std::string("Exception: ") + ex.what();
+    }
+    call_completed = true;
+  });
+
+  // Wait for the thread to complete with timeout
+  auto start_time = std::chrono::steady_clock::now();
+  while (!call_completed &&
+         (std::chrono::steady_clock::now() - start_time) < std::chrono::seconds(2)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Join the thread
+  if (service_thread.joinable()) {
+    service_thread.join();
+  }
+
+  // Check for errors
+  if (!call_completed || !response) {
+    error_message = thread_error.empty() ?
+        "Failed to get controller list from controller manager (timeout)." : thread_error;
+    RCLCPP_DEBUG(LOGGER, "%s", error_message.c_str());
+    return false;  // Allow program execution if we can't check (fail-safe)
+  }
+  std::vector<std::string> active_unsafe_controllers;
+
+  // Check each controller in the response
+  for (const auto& controller : response->controller) {
+    // Check if this controller is in the unsafe list and is active
+    if (std::find(unsafe_controllers.begin(), unsafe_controllers.end(), controller.name) != unsafe_controllers.end()) {
+      if (controller.state == "active") {
+        active_unsafe_controllers.push_back(controller.name);
+      }
+    }
+  }
+
+  // If any unsafe controllers are active, build error message and return true
+  if (!active_unsafe_controllers.empty()) {
+    error_message = "Cannot execute program: The following motion controllers are active: ";
+    for (size_t i = 0; i < active_unsafe_controllers.size(); ++i) {
+      error_message += active_unsafe_controllers[i];
+      if (i < active_unsafe_controllers.size() - 1) {
+        error_message += ", ";
+      }
+    }
+    error_message += ". Please stop these controllers before running a program.";
+    return true;  // Unsafe controllers are active
+  }
+
+  return false;  // Safe to execute program
 }
 
 void Kortex3HardwareInterface::handle_set_operating_mode(
@@ -949,6 +1130,256 @@ bool Kortex3HardwareInterface::calibrate_robot()
 
   RCLCPP_INFO(LOGGER, "Calibrated Xacro written to %s", out_xacro.c_str());
   return true;
+}
+
+void Kortex3HardwareInterface::handle_run_program(
+  const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
+  std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received RunProgram request for program name: '%s'", request->program_name.c_str());
+
+  // Validate program name is not empty
+  if (request->program_name.empty()) {
+    response->success = false;
+    response->message = "Program name cannot be empty.";
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+    return;
+  }
+
+  // Safety check: Verify no unsafe controllers are active
+  std::string error_message;
+  if (check_unsafe_controllers_active(error_message)) {
+    response->success = false;
+    response->message = error_message;
+    RCLCPP_ERROR(LOGGER, "%s", error_message.c_str());
+    return;
+  }
+
+  try {
+    // Get all programs to find the matching program by name
+    auto program_list = program_runner_->ReadAllPrograms();
+
+    uint32_t program_id = 0;
+    bool found = false;
+
+    for (int i = 0; i < program_list.programs_size(); ++i) {
+      const auto& program = program_list.programs(i);
+      if (program.name() == request->program_name) {
+        program_id = program.handle().identifier();
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      response->success = false;
+      response->message = "Program '" + request->program_name + "' not found. Use list_programs service to see available programs.";
+      RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+      return;
+    }
+
+    // Create the program handle
+    k_api::Common::ProgramHandle program_handle;
+    program_handle.set_identifier(program_id);
+    program_handle.set_permission(0);  // Default permission
+
+    // Create the runnable handle
+    k_api::ProgramRunner::RunnableHandle runnable_handle;
+    runnable_handle.mutable_program_handle()->CopyFrom(program_handle);
+
+    // Create the start configuration
+    k_api::ProgramRunner::ProgramStartConfiguration start_config;
+    start_config.mutable_handle()->CopyFrom(runnable_handle);
+    start_config.set_debug_mode(false);  // Debug mode disabled
+
+    // Start the program
+    program_runner_->Start(start_config);
+
+    response->success = true;
+    response->message = "Program '" + request->program_name + "' (ID: " + std::to_string(program_id) + ") started successfully.";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to start program: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_list_programs(
+  const std::shared_ptr<kortex3_hardware::srv::ListPrograms::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::ListPrograms::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ListPrograms request.");
+
+  try {
+    // Get all programs from the robot
+    auto program_list = program_runner_->ReadAllPrograms();
+
+    response->programs.clear();
+    for (int i = 0; i < program_list.programs_size(); ++i) {
+      const auto& program = program_list.programs(i);
+
+      kortex3_hardware::msg::ProgramInfo program_info;
+      program_info.identifier = program.handle().identifier();
+      program_info.name = program.name();
+
+      response->programs.push_back(program_info);
+    }
+
+    response->success = true;
+    response->message = "Found " + std::to_string(response->programs.size()) + " program(s).";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to list programs: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_stop_program(
+  const std::shared_ptr<kortex3_hardware::srv::StopProgram::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::StopProgram::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received StopProgram request.");
+
+  try {
+    // Stop the program
+    program_runner_->Stop();
+    RCLCPP_INFO(LOGGER, "Program stopped.");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Switch operating mode back to AUTO
+    RCLCPP_INFO(LOGGER, "Switching operating mode back to AUTO...");
+    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+    last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+    RCLCPP_INFO(LOGGER, "Operating mode set to AUTO.");
+
+    response->success = true;
+    response->message = "Program stopped successfully and operating mode set to AUTO.";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to stop program: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_get_program_status(
+  const std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received GetProgramStatus request.");
+
+  try {
+    auto status_info = program_runner_->GetStatus();
+
+    // Convert status enum to string
+    std::string status_str;
+    switch (status_info.status()) {
+      case k_api::ProgramRunner::STATUS_IDLE:
+        status_str = "IDLE";
+        break;
+      case k_api::ProgramRunner::STATUS_RUNNING:
+        status_str = "RUNNING";
+        break;
+      case k_api::ProgramRunner::STATUS_PAUSED:
+        status_str = "PAUSED";
+        break;
+      case k_api::ProgramRunner::STATUS_STARTING:
+        status_str = "STARTING";
+        break;
+      case k_api::ProgramRunner::STATUS_STOPPING:
+        status_str = "STOPPING";
+        break;
+      case k_api::ProgramRunner::STATUS_PAUSED_AUTOMATIC_RESUME:
+        status_str = "PAUSED_AUTOMATIC_RESUME";
+        break;
+      case k_api::ProgramRunner::STATUS_WAITING_FOR_ACKNOWLEDGE:
+        status_str = "WAITING_FOR_ACKNOWLEDGE";
+        break;
+      default:
+        status_str = "UNSPECIFIED";
+        break;
+    }
+
+    response->success = true;
+    response->status = status_str;
+    response->message = "Program runner status: " + status_str;
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to get program status: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_list_protection_zones(
+  const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ListProtectionZones request.");
+
+  try {
+    // Get all protection zones from the robot
+    auto zone_list = protection_zone_->ReadAllProtectionZones();
+
+    response->zones.clear();
+    for (int i = 0; i < zone_list.protection_zones_size(); ++i) {
+      const auto& zone = zone_list.protection_zones(i);
+
+      kortex3_hardware::msg::ProtectionZoneInfo zone_info;
+      zone_info.identifier = zone.handle().identifier();
+      zone_info.name = zone.name();
+      zone_info.is_enabled = zone.is_enabled();
+
+      response->zones.push_back(zone_info);
+    }
+
+    response->success = true;
+    response->message = "Found " + std::to_string(response->zones.size()) + " protection zone(s).";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+
+    // Log details of each zone
+    for (const auto& zone : response->zones) {
+      RCLCPP_INFO(LOGGER, "  Zone ID %u: %s [%s]",
+                  zone.identifier,
+                  zone.name.c_str(),
+                  zone.is_enabled ? "ENABLED" : "DISABLED");
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to list protection zones: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
 }
 
 } // namespace kortex3_driver
