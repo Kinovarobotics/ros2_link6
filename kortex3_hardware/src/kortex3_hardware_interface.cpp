@@ -14,9 +14,6 @@ namespace kortex3_driver
 const rclcpp::Logger Kortex3HardwareInterface::LOGGER =
   rclcpp::get_logger("Kortex3HardwareInterface");
 
-// Description package name for calibration files
-constexpr const char* DESCRIPTION_PACKAGE = "link6_description";
-
 Kortex3HardwareInterface::Kortex3HardwareInterface()
   : mqtt_port_(1883),
     udp_feedback_port_(10001),
@@ -155,13 +152,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       actuator_count_ = actuator_info.count();
     }
 
-    // 5. Generate and load robot calibration.
-    if (!calibrate_robot())
-    {
-        RCLCPP_WARN(LOGGER, "Calibration generation failed; using nominal model.");
-    }
-
-    // 6. Set the initial operating mode for velocity control.
+    // 5. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
 /*
@@ -727,83 +718,6 @@ void Kortex3HardwareInterface::handle_clear_faults(
     response->message = "Kortex API error: " + std::string(ex.what());
     RCLCPP_ERROR(LOGGER, "Failed to clear faults: %s", ex.what());
   }
-}
-
-bool Kortex3HardwareInterface::dump_calibration(const std::string& serial)
-{
-  try
-  {
-    // 1. Fetch the calibration data blob from the robot via MQTT.
-    auto blob = base_mqtt_->ExportArmCalibration();
-
-    // 2. Determine the path to save the calibration files.
-    auto desc_share = ament_index_cpp::get_package_share_directory(DESCRIPTION_PACKAGE);
-    fs::path cal_dir = fs::path(desc_share) / "calibration";
-    fs::create_directories(cal_dir);
-    fs::path zip_path = cal_dir / (serial + ".zip");
-
-    // 3. Write the fetched data to a .zip file.
-    std::ofstream out(zip_path, std::ios::binary | std::ios::trunc);
-    for (auto b : blob.data()) out.put(static_cast<char>(b));
-    out.close();
-    RCLCPP_INFO(LOGGER, "Calibration ZIP saved to %s", zip_path.c_str());
-
-    // 4. Unzip calib.xml from the archive for the generator script to use.
-    // Note: This creates an external dependency on the `unzip` command.
-    std::string cmd = "unzip -oq " + zip_path.string() + " calib.xml -d " + cal_dir.string();
-    if (std::system(cmd.c_str()) != 0) {
-      RCLCPP_WARN(LOGGER, "unzip command failed; XML may already exist or unzip is not installed.");
-    }
-    return true;
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_ERROR(LOGGER, "dump_calibration() failed: %s", ex.what());
-    return false;
-  }
-}
-
-bool Kortex3HardwareInterface::calibrate_robot()
-{
-  // Define paths for all required files and scripts.
-  const fs::path share_dir = ament_index_cpp::get_package_share_directory(DESCRIPTION_PACKAGE);
-  const fs::path cal_dir   = share_dir / "calibration";
-  const fs::path xml_path  = cal_dir / "calib.xml";
-  const fs::path out_xacro = share_dir / "urdf" / "link6_calibrated_macro.xacro";
-
-  // Check if calibration has already been performed by checking if both files exist
-  if (fs::exists(xml_path) && fs::exists(out_xacro))
-  {
-    RCLCPP_INFO(LOGGER, "Calibration already exists, skipping calibration download and generation.");
-    return true;
-  }
-
-  // Kortex 3 does not yet expose a unique serial number, so we use a fixed name.
-  const std::string serial = "link6";
-  if (!dump_calibration(serial))
-  {
-      return false;
-  }
-
-  const fs::path xacro_macro = share_dir / "urdf" / "link6_macro.xacro";
-  const fs::path py_script = share_dir / "scripts" / "calibrated_urdf_generator.py";
-
-  // Invoke the Python generator script to create the calibrated macro Xacro file.
-  // The script preserves the macro structure including prefix support and gripper integration.
-  // Note: This creates an external dependency on `python3` and the script itself.
-  std::ostringstream python_cmd;
-  python_cmd << "python3 " << py_script
-             << " --urdf_path "        << xacro_macro
-             << " --calibration_file " << xml_path
-             << " --output_file "      << out_xacro;
-  if (std::system(python_cmd.str().c_str()) != 0)
-  {
-    RCLCPP_WARN(LOGGER, "Calibration generation script failed; will use nominal model.");
-    return false;
-  }
-
-  RCLCPP_INFO(LOGGER, "Calibrated macro Xacro written to %s", out_xacro.c_str());
-  return true;
 }
 
 } // namespace kortex3_driver

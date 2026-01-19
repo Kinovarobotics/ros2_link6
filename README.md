@@ -247,10 +247,16 @@ Each Kinova Link6 is calibrated in the factory. This data can be extracted from 
 We provide a launch file to automatically extract the calibration files and generate the corresponding corrections:
 
 ```bash
-ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/your_robot_calibration
+ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder
 ```
 
 When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [6.1 Quick Launch](#61-quick-launch)).
+
+If you have multiple robots, you can use the `output_file` argument to save the files from each robot with a different name. For example:
+
+```bash
+ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder output_file:=robot_1.yaml
+```
 
 ---
 
@@ -281,12 +287,12 @@ To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
-ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 To bringup the simulated arm without any mounted gripper, use the following:
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
-ros2 launch link6_bringup sim_robot.launch.py calibration_file:=/path/to/your_robot_calibration.yaml
+ros2 launch link6_bringup sim_robot.launch.py calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 
 **Note:** If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.

@@ -108,19 +108,6 @@ public:
   /** @brief Gets the current joint torques. For debugging. */
   const std::vector<double>& get_joint_torques() const { return joint_torques_; }
 
-  /**
-   * @brief Fetches the robot's calibration data and saves it to a file.
-   * @param dst The destination file path.
-   * @return True on success, false otherwise.
-   */
-  bool dump_calibration(const std::string& dst);
-
-  /**
-   * @brief Triggers the full robot calibration process, generating a calibrated URDF.
-   * @return True on success, false otherwise.
-   */
-  bool calibrate_robot();
-
 private:
   std::mutex gripper_mtx_;
   // --- Private Helper Methods ---
