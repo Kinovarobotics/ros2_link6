@@ -1,0 +1,10 @@
+# Service to get the status of the program runner
+
+---
+
+# Response
+bool success
+string message
+
+# Status: IDLE, RUNNING, PAUSED, STARTING, STOPPING
+string status

@@ -1,0 +1,10 @@
+# Service to run a program stored on the robot controller
+
+# Program name as seen in the web interface
+string program_name
+
+---
+
+# Response
+bool success
+string message

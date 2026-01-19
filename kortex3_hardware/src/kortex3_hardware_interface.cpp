@@ -88,6 +88,30 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
       "kortex3_hardware/clear_faults",
       std::bind(&Kortex3HardwareInterface::handle_clear_faults,
                 this, std::placeholders::_1, std::placeholders::_2));
+  simulate_estop_service_ = node_ptr_->create_service<kortex3_hardware::srv::SimulateEstop>(
+      "kortex3_hardware/simulate_estop",
+      std::bind(&Kortex3HardwareInterface::handle_simulate_estop,
+                this, std::placeholders::_1, std::placeholders::_2));
+  run_program_service_ = node_ptr_->create_service<kortex3_hardware::srv::RunProgram>(
+      "kortex3_hardware/run_program",
+      std::bind(&Kortex3HardwareInterface::handle_run_program,
+                this, std::placeholders::_1, std::placeholders::_2));
+  list_programs_service_ = node_ptr_->create_service<kortex3_hardware::srv::ListPrograms>(
+      "kortex3_hardware/list_programs",
+      std::bind(&Kortex3HardwareInterface::handle_list_programs,
+                this, std::placeholders::_1, std::placeholders::_2));
+  stop_program_service_ = node_ptr_->create_service<kortex3_hardware::srv::StopProgram>(
+      "kortex3_hardware/stop_program",
+      std::bind(&Kortex3HardwareInterface::handle_stop_program,
+                this, std::placeholders::_1, std::placeholders::_2));
+  get_program_status_service_ = node_ptr_->create_service<kortex3_hardware::srv::GetProgramStatus>(
+      "kortex3_hardware/get_program_status",
+      std::bind(&Kortex3HardwareInterface::handle_get_program_status,
+                this, std::placeholders::_1, std::placeholders::_2));
+  list_protection_zones_service_ = node_ptr_->create_service<kortex3_hardware::srv::ListProtectionZones>(
+      "kortex3_hardware/list_protection_zones",
+      std::bind(&Kortex3HardwareInterface::handle_list_protection_zones,
+                this, std::placeholders::_1, std::placeholders::_2));
 
   RCLCPP_INFO(LOGGER, "Hardware Interface successfully initialized.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -119,6 +143,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     mqtt_session_info.set_connection_inactivity_timeout(10000);
     session_mqtt_->CreateSession(mqtt_session_info);
     base_mqtt_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
+    program_runner_ = std::make_shared<k_api::ProgramRunner::ProgramRunnerClient>(router_mqtt_.get());
+    protection_zone_ = std::make_shared<k_api::ProtectionZone::ProtectionZoneClient>(router_mqtt_.get());
 
     // 2. Check power state and turn on the robot if necessary.
     check_and_power_on_robot();
@@ -155,8 +181,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     // 5. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
-/*
-    // Initialize gripper Modbus connection
+
+    // 7. Initialize gripper Modbus connection
     constexpr uint16_t gripper_slave_id = 9; // Robotiq default Modbus ID
     modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
 
@@ -165,19 +191,63 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       return hardware_interface::CallbackReturn::ERROR;
     }
 
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper Modbus connection established.");
+    }
+
     gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
-*/
-    // Activate the gripper
-    /*
+    gripper_initialized_ = true;
+
+    // 8. Activate the gripper (following Robotiq reference implementation)
+    RCLCPP_INFO(LOGGER, "Activating Robotiq gripper...");
+
+    // Stop any ongoing gripper motion before activation
+    gripper_->FreezeGripper();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    gripper_->ReadRegister();
+
+    // Send activation request
     gripper_->SetActivateRequest();
     gripper_->SendRequest();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // Optional short delay
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
     gripper_->ReadRegister();
-    if (!gripper_->GetActivationCompleted()) 
+
+    // Poll until activation completes (timeout: 10 seconds)
+    const auto activation_timeout = std::chrono::seconds(10);
+    auto activation_start = std::chrono::steady_clock::now();
+    bool activation_complete = false;
+
+    while (std::chrono::steady_clock::now() - activation_start < activation_timeout)
     {
-      RCLCPP_WARN(LOGGER, "Gripper not fully activated yet");
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+      if (!gripper_->ReadRegister())
+      {
+        RCLCPP_WARN(LOGGER, "Failed to read gripper status during activation.");
+        continue;
+      }
+
+      // Check if activation is complete (GetActivateEcho returns true when ACT echo matches)
+      if (gripper_->GetActivateEcho())
+      {
+        activation_complete = true;
+        RCLCPP_WARN(LOGGER, "Gripper activation completed successfully.");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Final stabilization delay
+        break;
+      }
+      else
+      {
+        uint8_t status = gripper_->GetStatus();
+        RCLCPP_DEBUG(LOGGER, "Gripper activating... (STA=%d)", status);
+      }
     }
-    */
+
+    if (!activation_complete)
+    {
+      RCLCPP_ERROR(LOGGER, "Gripper activation failed or timed out. Cannot control gripper.");
+      return hardware_interface::CallbackReturn::ERROR;
+    }
     // First read from gripper
     auto opt_gripper_position = readGripperPosition();
     if (!opt_gripper_position.has_value())
@@ -254,6 +324,12 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
   // Reset ROS 2 interfaces and pointers.
   set_operating_mode_service_.reset();
   clear_faults_service_.reset();
+  simulate_estop_service_.reset();
+  run_program_service_.reset();
+  list_programs_service_.reset();
+  stop_program_service_.reset();
+  get_program_status_service_.reset();
+  list_protection_zones_service_.reset();
   node_ptr_.reset();
 
   RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface deactivated.");
@@ -367,6 +443,33 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
       last_operating_mode_ = new_mode;
     }
 
+    // 3.5. Track program runner status for velocity command blocking.
+    try {
+      auto current_program_status = program_runner_->GetStatus();
+      auto new_status = current_program_status.status();
+
+      // Detect when program finishes (transitions from active to inactive)
+      bool was_active = is_program_active(last_program_status_);
+      bool is_active = is_program_active(new_status);
+
+      if (was_active && !is_active) {
+        program_end_time_ = std::chrono::steady_clock::now();
+        RCLCPP_INFO(LOGGER, "Program execution ended (status: %d -> %d). Velocity commands will be blocked for 1 second.",
+                    last_program_status_, new_status);
+      }
+
+      // Log status changes
+      if (new_status != last_program_status_) {
+        RCLCPP_DEBUG(LOGGER, "Program runner status changed: %d -> %d",
+                    last_program_status_, new_status);
+        last_program_status_ = new_status;
+      }
+    }
+    catch (const k_api::KDetailedException &ex) {
+      // Don't spam logs if program runner is not available or busy
+      RCLCPP_DEBUG(LOGGER, "Failed to get program status in read(): %s", ex.what());
+    }
+
     // 4. Publish external tool wrench telemetry.
     if (wrench_publisher_ && feedback.has_base()) {
       geometry_msgs::msg::WrenchStamped w;
@@ -443,7 +546,7 @@ std::optional<double> Kortex3HardwareInterface::readGripperPosition()
 
   // 5) Decode & cache
   const uint8_t raw = gripper_->GetPosition();
-  gripper_position_ = static_cast<double>(raw) / 255.0 * 0.81;  // rad
+  gripper_position_ = static_cast<double>(raw) / 255.0;  // normalized 0.0-1.0
   //std::cout << "Gripper position: " << gripper_position_ << std::endl;
   return gripper_position_;
 }
@@ -464,6 +567,27 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
+  // Safety guard: Block velocity commands while program is running or within 1 second after completion.
+  // Check if program is currently active
+  if (is_program_active(last_program_status_)) {
+    RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
+                          "Velocity commands blocked: program is currently running (status: %d)",
+                          last_program_status_);
+    return hardware_interface::return_type::OK;
+  }
+
+  // Check if we're within 1 second after program completion
+  auto now = std::chrono::steady_clock::now();
+  auto time_since_program_end = std::chrono::duration_cast<std::chrono::milliseconds>(
+    now - program_end_time_).count();
+
+  if (time_since_program_end >= 0 && time_since_program_end < 1000) {
+    RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
+                          "Velocity commands blocked: %ld ms since program ended (blocking for 1 second)",
+                          time_since_program_end);
+    return hardware_interface::return_type::OK;
+  }
+
   try {
     Kinova::Api::Base::Action action;
     action.set_name("ros2_control_velocity_command");
@@ -479,7 +603,7 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
   }
   catch (const Kinova::Api::KDetailedException &e) {
     RCLCPP_ERROR(LOGGER, "Fault during write(): %s", e.what());
-    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
+    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant or restart the ROS2 launch file");
     in_fault_ = true;
     return hardware_interface::return_type::ERROR;
   }
@@ -499,7 +623,7 @@ void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
   if (now < next_gripper_send_) return;
 
   // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 0.81);
+  const double clamped = std::clamp(position_radians, 0.0, 1.0);
   if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
       std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
   {
@@ -510,7 +634,7 @@ void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
   std::lock_guard<std::mutex> lk(gripper_mtx_);
   if (!gripper_initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((clamped / 0.81) * 255.0);
+  const uint8_t pos = static_cast<uint8_t>(clamped * 255.0);
 
   // Best-effort write sequence (no sleeps, no loop blocking)
   gripper_->ClearGoToRequest();
@@ -624,6 +748,112 @@ void Kortex3HardwareInterface::send_zero_velocities()
   }
 }
 
+bool Kortex3HardwareInterface::is_program_active(k_api::ProgramRunner::Status status) const
+{
+  return (status == k_api::ProgramRunner::STATUS_RUNNING ||
+          status == k_api::ProgramRunner::STATUS_STARTING ||
+          status == k_api::ProgramRunner::STATUS_PAUSED ||
+          status == k_api::ProgramRunner::STATUS_PAUSED_AUTOMATIC_RESUME ||
+          status == k_api::ProgramRunner::STATUS_WAITING_FOR_ACKNOWLEDGE ||
+          status == k_api::ProgramRunner::STATUS_STOPPING);
+}
+
+bool Kortex3HardwareInterface::check_unsafe_controllers_active(std::string& error_message)
+{
+  // List of controllers that should block program execution
+  const std::vector<std::string> unsafe_controllers = {
+    "joint_velocity_controller",
+    "cartesian_motion_controller",
+    "motion_control_handle"
+  };
+
+  // Perform the service call in a separate thread to avoid executor conflicts
+  std::atomic<bool> call_completed{false};
+  std::shared_ptr<controller_manager_msgs::srv::ListControllers::Response> response;
+  std::string thread_error;
+
+  std::thread service_thread([this, &call_completed, &response, &thread_error]() {
+    try {
+      // Create a separate node for this thread to avoid executor conflicts
+      auto temp_node = std::make_shared<rclcpp::Node>("controller_checker_temp");
+      auto temp_client = temp_node->create_client<controller_manager_msgs::srv::ListControllers>(
+          "/controller_manager/list_controllers");
+
+      // Wait for service to be available
+      if (!temp_client->wait_for_service(std::chrono::milliseconds(500))) {
+        thread_error = "Controller manager service not available";
+        call_completed = true;
+        return;
+      }
+
+      // Call the service
+      auto request = std::make_shared<controller_manager_msgs::srv::ListControllers::Request>();
+      auto future = temp_client->async_send_request(request);
+
+      // Spin until complete
+      rclcpp::executors::SingleThreadedExecutor executor;
+      executor.add_node(temp_node);
+
+      auto ret_code = executor.spin_until_future_complete(future, std::chrono::seconds(1));
+
+      if (ret_code == rclcpp::FutureReturnCode::SUCCESS) {
+        response = future.get();
+      } else {
+        thread_error = "Service call timed out";
+      }
+    } catch (const std::exception& ex) {
+      thread_error = std::string("Exception: ") + ex.what();
+    }
+    call_completed = true;
+  });
+
+  // Wait for the thread to complete with timeout
+  auto start_time = std::chrono::steady_clock::now();
+  while (!call_completed &&
+         (std::chrono::steady_clock::now() - start_time) < std::chrono::seconds(2)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Join the thread
+  if (service_thread.joinable()) {
+    service_thread.join();
+  }
+
+  // Check for errors
+  if (!call_completed || !response) {
+    error_message = thread_error.empty() ?
+        "Failed to get controller list from controller manager (timeout)." : thread_error;
+    RCLCPP_DEBUG(LOGGER, "%s", error_message.c_str());
+    return false;  // Allow program execution if we can't check (fail-safe)
+  }
+  std::vector<std::string> active_unsafe_controllers;
+
+  // Check each controller in the response
+  for (const auto& controller : response->controller) {
+    // Check if this controller is in the unsafe list and is active
+    if (std::find(unsafe_controllers.begin(), unsafe_controllers.end(), controller.name) != unsafe_controllers.end()) {
+      if (controller.state == "active") {
+        active_unsafe_controllers.push_back(controller.name);
+      }
+    }
+  }
+
+  // If any unsafe controllers are active, build error message and return true
+  if (!active_unsafe_controllers.empty()) {
+    error_message = "Cannot execute program: The following motion controllers are active: ";
+    for (size_t i = 0; i < active_unsafe_controllers.size(); ++i) {
+      error_message += active_unsafe_controllers[i];
+      if (i < active_unsafe_controllers.size() - 1) {
+        error_message += ", ";
+      }
+    }
+    error_message += ". Please stop these controllers before running a program.";
+    return true;  // Unsafe controllers are active
+  }
+
+  return false;  // Safe to execute program
+}
+
 void Kortex3HardwareInterface::handle_set_operating_mode(
   const std::shared_ptr<kortex3_hardware::srv::SetOperatingMode::Request> request,
   std::shared_ptr<kortex3_hardware::srv::SetOperatingMode::Response> response)
@@ -717,6 +947,432 @@ void Kortex3HardwareInterface::handle_clear_faults(
     response->success = false;
     response->message = "Kortex API error: " + std::string(ex.what());
     RCLCPP_ERROR(LOGGER, "Failed to clear faults: %s", ex.what());
+  }
+}
+
+void Kortex3HardwareInterface::handle_simulate_estop(
+  const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
+  std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response)
+{
+  if (request->enable) {
+    RCLCPP_WARN(LOGGER, "==================================================");
+    RCLCPP_WARN(LOGGER, "TRIGGERING ROBOT FAULT VIA SAFETY VIOLATION");
+    RCLCPP_WARN(LOGGER, "Method: Excessive joint velocity command");
+    RCLCPP_WARN(LOGGER, "==================================================");
+
+    try {
+      // Create action with excessive joint velocities that violate safety limits
+      Kinova::Api::Base::Action action;
+      action.set_name("fault_injection_test");
+      auto *js = action.mutable_send_joint_speeds();
+
+      // Send excessive velocity to joint 6 only to trigger safety violation
+      // Normal safe limits: ~1-2 rad/s (57-115 deg/s)
+      // We send 180 deg/s (~3.14 rad/s) to joint 6
+      const float excessive_velocity = 320.0f;  // deg/s
+      const size_t target_joint = 4;  // Joint 6 (0-indexed)
+
+      auto &sp = *js->add_joint_speeds();
+      sp.set_joint_identifier(target_joint);
+      sp.set_value(excessive_velocity);
+
+      RCLCPP_WARN(LOGGER, "Sending excessive velocity (%.0f deg/s, ~%.1f rad/s) to joint %zu",
+                  excessive_velocity, excessive_velocity * M_PI / 180.0, target_joint + 1);
+
+      // Execute - robot's safety system should reject this
+      base_mqtt_->ExecuteAction(action);
+
+      // Wait briefly for fault detection in the read() loop
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+      // Verify robot entered fault state
+      auto arm_state = base_mqtt_->GetArmState();
+      if (arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT ||
+          arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT_POWERED_OFF) {
+        response->success = true;
+        response->message = "SUCCESS: Robot entered FAULT state (" +
+                          k_api::Common::ArmState_Name(arm_state.active_state()) +
+                          "). To recover, use the teach pendant to clear faults and turn on the arm";
+        RCLCPP_WARN(LOGGER, "Robot successfully entered fault state: %s",
+                    k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+        RCLCPP_WARN(LOGGER, "To recover: Use the teach pendant to cleat faults and turn on the arm");
+      } else {
+        response->success = false;
+        response->message = "Command sent but robot did not enter fault state. "
+                          "Current state: " + k_api::Common::ArmState_Name(arm_state.active_state()) +
+                          ". The robot's safety system may have rejected the command without entering fault.";
+        RCLCPP_WARN(LOGGER, "Robot did not enter fault state. Current state: %s",
+                    k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+      }
+
+    } catch (const Kinova::Api::KDetailedException &e) {
+      // API rejection is expected - the robot's safety system rejects invalid commands
+      RCLCPP_INFO(LOGGER, "Kortex API rejected command (expected behavior): %s", e.what());
+
+      // Check if rejection triggered a fault state
+      try {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        auto arm_state = base_mqtt_->GetArmState();
+        if (arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT ||
+            arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT_POWERED_OFF) {
+          response->success = true;
+          response->message = "SUCCESS: API rejected command and robot entered FAULT state (" +
+                            k_api::Common::ArmState_Name(arm_state.active_state()) +
+                            "). Call clear_faults service to recover.";
+          RCLCPP_WARN(LOGGER, "Fault successfully triggered via API rejection");
+        } else {
+          response->success = false;
+          response->message = "API rejected command but robot not in fault. "
+                            "Current state: " + k_api::Common::ArmState_Name(arm_state.active_state()) +
+                            ". Try pressing physical E-stop instead.";
+          RCLCPP_INFO(LOGGER, "Command rejected but no fault state entered");
+        }
+      } catch (...) {
+        response->success = false;
+        response->message = "API rejected command. Unable to verify robot state.";
+        RCLCPP_ERROR(LOGGER, "Failed to verify robot state after command rejection");
+      }
+    } catch (const std::exception &e) {
+      response->success = false;
+      response->message = std::string("Unexpected error during fault injection: ") + e.what();
+      RCLCPP_ERROR(LOGGER, "Unexpected error during fault injection: %s", e.what());
+    }
+
+  } else {
+    // Disable - just provide guidance
+    RCLCPP_INFO(LOGGER, "Fault injection disabled. Use clear_faults service to recover from any active faults.");
+    response->success = true;
+    response->message = "To clear active faults, call: ros2 service call /kortex3_hardware/clear_faults kortex3_hardware/srv/ClearFaults \"{}\"";
+  }
+}
+
+bool Kortex3HardwareInterface::dump_calibration(const std::string& serial)
+{
+  try
+  {
+    // 1. Fetch the calibration data blob from the robot via MQTT.
+    auto blob = base_mqtt_->ExportArmCalibration();
+
+    // 2. Determine the path to save the calibration files.
+    // This assumes a companion description package (e.g., link6_description).
+    auto desc_share = ament_index_cpp::get_package_share_directory("link6_description");
+    fs::path cal_dir = fs::path(desc_share) / "calibration";
+    fs::create_directories(cal_dir);
+    fs::path zip_path = cal_dir / (serial + ".zip");
+
+    // 3. Write the fetched data to a .zip file.
+    std::ofstream out(zip_path, std::ios::binary | std::ios::trunc);
+    for (auto b : blob.data()) out.put(static_cast<char>(b));
+    out.close();
+    RCLCPP_INFO(LOGGER, "Calibration ZIP saved to %s", zip_path.c_str());
+
+    // 4. Unzip calib.xml from the archive for the generator script to use.
+    // Note: This creates an external dependency on the `unzip` command.
+    std::string cmd = "unzip -oq " + zip_path.string() + " calib.xml -d " + cal_dir.string();
+    if (std::system(cmd.c_str()) != 0) {
+      RCLCPP_WARN(LOGGER, "unzip command failed; XML may already exist or unzip is not installed.");
+    }
+    return true;
+  }
+  catch (const std::exception& ex)
+  {
+    RCLCPP_ERROR(LOGGER, "dump_calibration() failed: %s", ex.what());
+    return false;
+  }
+}
+
+bool Kortex3HardwareInterface::calibrate_robot()
+{
+  // Kortex 3 does not yet expose a unique serial number, so we use a fixed name.
+  const std::string serial = "link6";
+  if (!dump_calibration(serial))
+  {
+      return false;
+  }
+
+  // Define paths for all required files and scripts.
+  const fs::path share_dir = ament_index_cpp::get_package_share_directory("link6_description");
+  const fs::path cal_dir   = share_dir / "calibration";
+  const fs::path xml_path  = cal_dir / "calib.xml";
+  const fs::path xacro_nom = share_dir / "urdf" / "link6_nominal.xacro";
+  const fs::path temp_nom  = cal_dir  / "link6_nominal.urdf";
+  const fs::path py_script = share_dir / "scripts" / "calibrated_urdf_generator.py";
+  const fs::path out_xacro = share_dir / "urdf"   / "link6_calibrated.xacro";
+
+  // 1. Expand the nominal Xacro to a temporary URDF file.
+  // Note: This creates an external dependency on `xacro`.
+  std::ostringstream xacro_cmd;
+  xacro_cmd << "xacro " << xacro_nom << " -o " << temp_nom;
+  if (std::system(xacro_cmd.str().c_str()) != 0)
+  {
+    RCLCPP_ERROR(LOGGER, "xacro failed while expanding nominal model.");
+    return false;
+  }
+
+  // 2. Invoke the Python generator script to create the calibrated Xacro file.
+  // Note: This creates an external dependency on `python3` and the script itself.
+  std::ostringstream python_cmd;
+  python_cmd << "python3 " << py_script
+             << " --urdf_path "        << temp_nom
+             << " --calibration_file " << xml_path
+             << " --output_file "      << out_xacro;
+  if (std::system(python_cmd.str().c_str()) != 0)
+  {
+    RCLCPP_WARN(LOGGER, "Calibration generation script failed; will use nominal model.");
+    return false;
+  }
+
+  RCLCPP_INFO(LOGGER, "Calibrated Xacro written to %s", out_xacro.c_str());
+  return true;
+}
+
+void Kortex3HardwareInterface::handle_run_program(
+  const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
+  std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received RunProgram request for program name: '%s'", request->program_name.c_str());
+
+  // Validate program name is not empty
+  if (request->program_name.empty()) {
+    response->success = false;
+    response->message = "Program name cannot be empty.";
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+    return;
+  }
+
+  // Safety check: Verify no unsafe controllers are active
+  std::string error_message;
+  if (check_unsafe_controllers_active(error_message)) {
+    response->success = false;
+    response->message = error_message;
+    RCLCPP_ERROR(LOGGER, "%s", error_message.c_str());
+    return;
+  }
+
+  try {
+    // Get all programs to find the matching program by name
+    auto program_list = program_runner_->ReadAllPrograms();
+
+    uint32_t program_id = 0;
+    bool found = false;
+
+    for (int i = 0; i < program_list.programs_size(); ++i) {
+      const auto& program = program_list.programs(i);
+      if (program.name() == request->program_name) {
+        program_id = program.handle().identifier();
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      response->success = false;
+      response->message = "Program '" + request->program_name + "' not found. Use list_programs service to see available programs.";
+      RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+      return;
+    }
+
+    // Create the program handle
+    k_api::Common::ProgramHandle program_handle;
+    program_handle.set_identifier(program_id);
+    program_handle.set_permission(0);  // Default permission
+
+    // Create the runnable handle
+    k_api::ProgramRunner::RunnableHandle runnable_handle;
+    runnable_handle.mutable_program_handle()->CopyFrom(program_handle);
+
+    // Create the start configuration
+    k_api::ProgramRunner::ProgramStartConfiguration start_config;
+    start_config.mutable_handle()->CopyFrom(runnable_handle);
+    start_config.set_debug_mode(false);  // Debug mode disabled
+
+    // Start the program
+    program_runner_->Start(start_config);
+
+    response->success = true;
+    response->message = "Program '" + request->program_name + "' (ID: " + std::to_string(program_id) + ") started successfully.";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to start program: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_list_programs(
+  const std::shared_ptr<kortex3_hardware::srv::ListPrograms::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::ListPrograms::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ListPrograms request.");
+
+  try {
+    // Get all programs from the robot
+    auto program_list = program_runner_->ReadAllPrograms();
+
+    response->programs.clear();
+    for (int i = 0; i < program_list.programs_size(); ++i) {
+      const auto& program = program_list.programs(i);
+
+      kortex3_hardware::msg::ProgramInfo program_info;
+      program_info.identifier = program.handle().identifier();
+      program_info.name = program.name();
+
+      response->programs.push_back(program_info);
+    }
+
+    response->success = true;
+    response->message = "Found " + std::to_string(response->programs.size()) + " program(s).";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to list programs: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_stop_program(
+  const std::shared_ptr<kortex3_hardware::srv::StopProgram::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::StopProgram::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received StopProgram request.");
+
+  try {
+    // Stop the program
+    program_runner_->Stop();
+    RCLCPP_INFO(LOGGER, "Program stopped.");
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Switch operating mode back to AUTO
+    RCLCPP_INFO(LOGGER, "Switching operating mode back to AUTO...");
+    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+    last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+    RCLCPP_INFO(LOGGER, "Operating mode set to AUTO.");
+
+    response->success = true;
+    response->message = "Program stopped successfully and operating mode set to AUTO.";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to stop program: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_get_program_status(
+  const std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received GetProgramStatus request.");
+
+  try {
+    auto status_info = program_runner_->GetStatus();
+
+    // Convert status enum to string
+    std::string status_str;
+    switch (status_info.status()) {
+      case k_api::ProgramRunner::STATUS_IDLE:
+        status_str = "IDLE";
+        break;
+      case k_api::ProgramRunner::STATUS_RUNNING:
+        status_str = "RUNNING";
+        break;
+      case k_api::ProgramRunner::STATUS_PAUSED:
+        status_str = "PAUSED";
+        break;
+      case k_api::ProgramRunner::STATUS_STARTING:
+        status_str = "STARTING";
+        break;
+      case k_api::ProgramRunner::STATUS_STOPPING:
+        status_str = "STOPPING";
+        break;
+      case k_api::ProgramRunner::STATUS_PAUSED_AUTOMATIC_RESUME:
+        status_str = "PAUSED_AUTOMATIC_RESUME";
+        break;
+      case k_api::ProgramRunner::STATUS_WAITING_FOR_ACKNOWLEDGE:
+        status_str = "WAITING_FOR_ACKNOWLEDGE";
+        break;
+      default:
+        status_str = "UNSPECIFIED";
+        break;
+    }
+
+    response->success = true;
+    response->status = status_str;
+    response->message = "Program runner status: " + status_str;
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to get program status: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+}
+
+void Kortex3HardwareInterface::handle_list_protection_zones(
+  const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> /*request*/,
+  std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ListProtectionZones request.");
+
+  try {
+    // Get all protection zones from the robot
+    auto zone_list = protection_zone_->ReadAllProtectionZones();
+
+    response->zones.clear();
+    for (int i = 0; i < zone_list.protection_zones_size(); ++i) {
+      const auto& zone = zone_list.protection_zones(i);
+
+      kortex3_hardware::msg::ProtectionZoneInfo zone_info;
+      zone_info.identifier = zone.handle().identifier();
+      zone_info.name = zone.name();
+      zone_info.is_enabled = zone.is_enabled();
+
+      response->zones.push_back(zone_info);
+    }
+
+    response->success = true;
+    response->message = "Found " + std::to_string(response->zones.size()) + " protection zone(s).";
+    RCLCPP_INFO(LOGGER, "%s", response->message.c_str());
+
+    // Log details of each zone
+    for (const auto& zone : response->zones) {
+      RCLCPP_INFO(LOGGER, "  Zone ID %u: %s [%s]",
+                  zone.identifier,
+                  zone.name.c_str(),
+                  zone.is_enabled ? "ENABLED" : "DISABLED");
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Failed to list protection zones: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
+  }
+  catch (const std::exception &ex) {
+    response->success = false;
+    response->message = "Unexpected error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "%s", response->message.c_str());
   }
 }
 
