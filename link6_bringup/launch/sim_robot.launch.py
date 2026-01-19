@@ -25,6 +25,7 @@ def launch_setup(context, *args, **kwargs):
     gripper = LaunchConfiguration("gripper")
     gui = LaunchConfiguration("gui")
     gz_args = LaunchConfiguration("gz_args")
+    calibration_file = LaunchConfiguration("calibration_file")
 
     # Create the launch actions
     robot_description = {
@@ -36,8 +37,11 @@ def launch_setup(context, *args, **kwargs):
                     [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
                 ),
                 " ",
-                "gripper:=", 
+                "gripper:=",
                 gripper,
+                " ",
+                "calibration_file:=",
+                calibration_file,
                 " ",
                 "sim_gazebo:=true",
                 " ",
@@ -196,9 +200,18 @@ def generate_launch_description():
 
     declared_arguments.append(
         DeclareLaunchArgument(
-            "gripper",      
+            "gripper",
             default_value="",
             description='Name of the gripper attached to the arm (empty for no gripper).'
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "calibration_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("link6_description"), "config", "default_calibration.yaml"]
+            ),
+            description="Path to robot-specific calibration YAML file (default: default_calibration.yaml)",
         )
     )
     declared_arguments.append(
@@ -210,7 +223,7 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-            "gz_args",      
+            "gz_args",
             default_value="-r -v 2 empty.sdf",
             description='Arguments to pass to Gazebo.'
         )

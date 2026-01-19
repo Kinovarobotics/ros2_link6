@@ -26,21 +26,22 @@
     - [5.4 Build \& Source](#54-build--source)
       - [5.4.1 Build](#541-build)
       - [5.4.2 Source](#542-source)
+    - [5.5 Extract calibration data](#55-extract-calibration-data)
   - [6. Usage](#6-usage)
     - [6.1 Quick Launch](#61-quick-launch)
       - [6.1.1 Real Hardware](#611-real-hardware)
       - [6.1.2 Simulation](#612-simulation)
     - [6.2 Controllers \& Commands](#62-controllers--commands)
       - [6.2.1 Listing \& Switching Controllers](#621-listing--switching-controllers)
-      - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)
-      - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)
-      - [6.2.4 Robotiq Gripper Controller](#624-robotiq-gripper-controller)
+      - [6.2.2 Joint Trajectory Controller](#622-joint-trajectory-controller)
+      - [6.2.3 Cartesian Motion Controller](#623-cartesian-motion-controller)
+      - [6.2.4 Joint Velocity Controller](#624-joint-velocity-controller)
+      - [6.2.5 Robotiq Gripper Controller](#625-robotiq-gripper-controller)
       - [Real-life Control:](#real-life-control)
       - [Simulation Control:](#simulation-control)
     - [6.3 Testing Tools](#63-testing-tools)
       - [6.3.1 Read‑Only Test](#631-readonly-test)
       - [6.3.2 Velocity Control Test](#632-velocity-control-test)
-      - [6.3.3 Calibration Read Test](#633-calibration-read-test)
     - [6.4 MoveIt](#64-moveit)
       - [6.4.1 Real Hardware](#641-real-hardware)
       - [6.4.2 Simulation](#642-simulation)
@@ -48,10 +49,6 @@
     - [7.1 Operating Modes](#71-operating-modes)
     - [7.2 Switching Modes](#72-switching-modes)
     - [7.3 Fault Handling](#73-fault-handling)
-  - [8. Calibration Workflow](#8-calibration-workflow)
-    - [8.1 How It Works](#81-how-it-works)
-    - [8.2 Testing Calibration (Development)](#82-testing-calibration-development)
-    - [8.3 Using Calibrated Model](#83-using-calibrated-model)
   - [9. Visualization](#9-visualization)
     - [9.1 RViz Setup](#91-rviz-setup)
     - [9.2 Interactive Marker Control](#92-interactive-marker-control)
@@ -243,6 +240,18 @@ echo "source $COLCON_WS/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
 ```
 
+### 5.5 Extract calibration data
+
+Each Kinova Link6 is calibrated in the factory. This data can be extracted from the robot and used to apply robot-specific geometric corrections to the URDF files, improving positional accuracy. Although this step is not mandatory, it is highly recommended to avoid end-effector position errors.
+
+We provide a launch file to automatically extract the calibration files and generate the corresponding corrections:
+
+```bash
+ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/your_robot_calibration
+```
+
+When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [6.1 Quick Launch](#61-quick-launch)).
+
 ---
 
 ## 6. Usage
@@ -254,13 +263,15 @@ source ~/.bashrc
 To bringup a real life Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
-ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 
 To bringup the arm without any mounted gripper, use the following:
 ```bash
-ros2 launch link6_bringup real_robot.launch.py
+ros2 launch link6_bringup real_robot.launch.py calibration_file:=/path/to/your_robot_calibration.yaml
 ```
+
+**Note:** If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
 #### 6.1.2 Simulation
 
@@ -270,13 +281,15 @@ To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
-ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 To bringup the simulated arm without any mounted gripper, use the following:
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
-ros2 launch link6_bringup sim_robot.launch.py
+ros2 launch link6_bringup sim_robot.launch.py calibration_file:=/path/to/your_robot_calibration.yaml
 ```
+
+**Note:** If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
 <p align="center">
   <img src="doc/resources/link6_gazebo.png" alt="Link6 Gazebo" width="60%"/>
@@ -474,25 +487,6 @@ Joint | Pos [deg] | Vel [deg/s] | Torque [Nm] | Cmd Vel [deg/s]
 Press Ctrl+C to stop...
 ```
 
-#### 6.3.3 Calibration Read Test
-
-**Run the test:**
-
-```bash
-ros2 run kortex3_hardware test_read_calibration
-```
-
-**Output:**
-
-```
-[INFO] [Kortex3HardwareInterface]: Kortex3 Hardware Interface successfully activated.
-[INFO] Found calibration package at: .../link6_description/calibration/calib.xml
-[INFO] Found serial number: <SERIAL NUMBER>
-[INFO] Calibrated Xacro written to .../link6_description/urdf/link6_calibrated.xacro
-[Kortex3HardwareInterface]: Kortex3 Hardware Interface deactivated.
-=== Test complete ===
-```
-
 ---
 
 ### 6.4 MoveIt
@@ -575,52 +569,6 @@ message: "Faults cleared and arm recovered to OPERATIONAL."
 ```
 
 Note: Some errors might require the user to login into the web app to manual jog the robot out of it.
-
----
-
-## 8. Calibration Workflow
-
-The Link6 ROS 2 driver features an automatic calibration feature that uses calibration data from the robot controller to apply robot-specific geometric corrections to the URDF file, improving positional accuracy.
-
-### 8.1 How It Works
-
-1. **On bringup**, the hardware interface downloads the calibration bundle from the robot
-2. **Calibration data** is extracted to: `$(ros2 pkg prefix link6_description)/share/link6_description/calibration/calib.xml`
-3. **Python script** applies calibration offsets to the macro: `link6_macro.xacro` → `link6_calibrated_macro.xacro`
-4. **Calibrated model** is available at: `$(ros2 pkg prefix link6_description)/share/link6_description/urdf/link6_calibrated_macro.xacro`
-
-### 8.2 Testing Calibration (Development)
-
-For development and testing, you can verify the calibration script works correctly using test calibration data:
-
-```bash
-# Run automated test with example calibration data
-cd $(ros2 pkg prefix link6_description)/share/link6_description
-bash scripts/test_calibration.sh
-```
-
-Note: The test calibration data in `test/calibration/` is for development only. Actual calibration data is downloaded from the robot automatically when the hardware interface connects.
-
-### 8.3 Using Calibrated Model
-
-To use the calibrated robot model in your launch files:
-
-```python
-# Instead of link6.urdf.xacro, use:
-robot_description = xacro.process_file(
-    os.path.join(pkg_share, 'urdf', 'link6_calibrated.urdf.xacro'),
-    mappings={'robot_ip': robot_ip, 'gripper': gripper, ...}
-).toxml()
-```
-
-Or include the calibrated macro directly:
-
-```xml
-<xacro:include filename="$(find link6_description)/urdf/link6_calibrated_macro.xacro" />
-<xacro:link6 parent="world" gripper="true" robot_ip="192.168.1.10" ...>
-  <origin xyz="0 0 0" rpy="0 0 0" />
-</xacro:link6>
-```
 
 ---
 

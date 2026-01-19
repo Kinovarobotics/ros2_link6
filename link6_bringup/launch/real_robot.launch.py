@@ -17,6 +17,7 @@ from launch_ros.substitutions import FindPackageShare
 def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
+    calibration_file = LaunchConfiguration("calibration_file")
     robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -25,8 +26,11 @@ def launch_setup(context, *args, **kwargs):
                 [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
             ),
             " ",
-            "gripper:=", 
+            "gripper:=",
             gripper,
+            " ",
+            "calibration_file:=",
+            calibration_file,
             " ",
         ]
     )
@@ -148,6 +152,15 @@ def generate_launch_description():
             "gripper",
             default_value="",
             description="Name of the gripper attached to the arm (empty for no gripper)",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "calibration_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("link6_description"), "config", "default_calibration.yaml"]
+            ),
+            description="Path to robot-specific calibration YAML file (default: default_calibration.yaml)",
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

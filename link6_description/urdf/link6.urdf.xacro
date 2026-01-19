@@ -19,13 +19,13 @@
     <xacro:arg name="fake_sensor_commands" default="false" />
     <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
     <xacro:arg name="use_external_cable" default="false" />
+    <!-- Initial position for simulations (Mock Hardware, Gazebo) -->
+    <xacro:arg name="initial_positions_file" default="$(find link6_description)/config/initial_positions.yaml" />
+    <!-- Robot-specific calibration -->
+    <xacro:arg name="calibration_file" default="$(find link6_description)/config/default_calibration.yaml" />
 
+    <!-- Include Link6 macro -->
     <xacro:include filename="$(find link6_description)/urdf/link6_macro.xacro" />
-    <!-- initial position for simulations (Mock Hardware, Gazebo) -->
-    <xacro:arg name="initial_positions_file"
-        default="$(find link6_description)/config/initial_positions.yaml" />
-    <!-- convert to property to use substitution in function -->
-    <xacro:property name="initial_positions_file" default="$(arg initial_positions_file)" />
 
     <link name="world" />
 
@@ -39,7 +39,8 @@
         use_fake_hardware="$(arg use_fake_hardware)"
         fake_sensor_commands="$(arg fake_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
-        initial_positions="${xacro.load_yaml(initial_positions_file)}">
+        initial_positions_file="$(arg initial_positions_file)"
+        calibration_file="$(arg calibration_file)">
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
     </xacro:link6>
 
