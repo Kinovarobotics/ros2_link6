@@ -32,9 +32,10 @@
       - [6.1.2 Simulation](#612-simulation)
     - [6.2 Controllers \& Commands](#62-controllers--commands)
       - [6.2.1 Listing \& Switching Controllers](#621-listing--switching-controllers)
-      - [6.2.2 Cartesian Motion Controller](#622-cartesian-motion-controller)
-      - [6.2.3 Joint Velocity Controller](#623-joint-velocity-controller)
-      - [6.2.4 Robotiq Gripper Controller](#624-robotiq-gripper-controller)
+      - [6.2.2 Joint Trajectory Controller](#622-joint-trajectory-controller)
+      - [6.2.3 Cartesian Motion Controller](#623-cartesian-motion-controller)
+      - [6.2.4 Joint Velocity Controller](#624-joint-velocity-controller)
+      - [6.2.5 Robotiq Gripper Controller](#625-robotiq-gripper-controller)
       - [Real-life Control:](#real-life-control)
       - [Simulation Control:](#simulation-control)
     - [6.3 Testing Tools](#63-testing-tools)
@@ -48,6 +49,17 @@
     - [7.1 Operating Modes](#71-operating-modes)
     - [7.2 Switching Modes](#72-switching-modes)
     - [7.3 Fault Handling](#73-fault-handling)
+    - [7.4 Emergency Stop (Category 0) via ROS2](#74-emergency-stop-category-0-via-ros2)
+      - [Triggering a Simulated Emergency Stop](#triggering-a-simulated-emergency-stop)
+      - [Recovery](#recovery)
+      - [Safety Notes](#safety-notes)
+    - [7.5 Interaction with the Webapp Programs via ROS2](#75-interaction-with-the-webapp-programs-via-ros2)
+      - [7.5.1 Listing the Available Programs](#751-listing-the-available-programs)
+      - [7.5.2 Running a Specific Program](#752-running-a-specific-program)
+      - [7.5.3 Stopping a Running Program](#753-stopping-a-running-program)
+      - [7.5.4 Checking Program Status](#754-checking-program-status)
+      - [7.5.5 Complete Workflow Example](#755-complete-workflow-example)
+      - [7.6 Protection Zones Information](#76-protection-zones-information)
   - [8. Calibration Workflow](#8-calibration-workflow)
     - [8.1 How It Works](#81-how-it-works)
     - [8.2 Testing Calibration (Development)](#82-testing-calibration-development)
@@ -372,13 +384,15 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 
 2. Fully close the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.81, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
 ```
 
 3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
+
+**NOTE** Some grippers include an extra rubber layer on the fingertips which will affect the closing position value
 
 #### Simulation Control:
 
@@ -552,6 +566,8 @@ ros2 service call /kortex3_hardware/set_operating_mode \
   kortex3_hardware/srv/SetOperatingMode "{ operating_mode: 4 }"
 ```
 
+**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons.
+
 ### 7.3 Fault Handling
 
 If the arm enters a fault state (e.g. emergency stop, self-collision), you will see:
@@ -576,7 +592,233 @@ message: "Faults cleared and arm recovered to OPERATIONAL."
 
 Note: Some errors might require the user to login into the web app to manual jog the robot out of it.
 
+### 7.4 Emergency Stop (Category 0) via ROS2
+
+For testing and development purposes, you can programmatically trigger a fault state without physically pressing the emergency stop button. This is useful for:
+- Testing fault handling logic
+- Automated testing and CI/CD integration
+- Demonstrating fault recovery procedures
+- Validating safety systems
+
+#### Triggering a Simulated Emergency Stop
+
+```bash
+ros2 service call /kortex3_hardware/simulate_estop \
+  kortex3_hardware/srv/SimulateEstop "{enable: true}"
+```
+
+**What happens:**
+- The service sends an excessive velocity command to joint 5 (320 deg/s)
+- The robot's safety system detects the violation and enters FAULT state
+- The hardware interface immediately detects the fault and displays recovery instructions
+
+#### Recovery
+
+After triggering the fault, recover using the teach pendant to:
+- Clear the faults
+- Turn on the arm
+
+#### Safety Notes
+
+**Important:**
+- This triggers a **real fault state** on the robot, not a simulation
+- The robot will stop accepting motion commands until fault is cleared
+- Controllers will return ERROR during fault state
+- Use only in controlled testing environments
+- Do not use during critical operations
+
 ---
+
+### 7.5 Interaction with the Webapp Programs via ROS2
+
+Additional services are available to interact with the programs that were previously created and saved on the robot controller via the web application. This covers listing, running, stopping programms as well as reading the status of the program runner.
+
+**Important Safety Note:** Before running any program through ROS2, ensure that all motion controllers (especially `joint_velocity_controller`, `cartesian_motion_controller`, and `motion_control_handle`) are deactivated. The hardware interface includes automatic safety checks to prevent conflicts between ROS2 controllers and program execution.
+
+#### 7.5.1 Listing the Available Programs
+
+To retrieve a list of all programs stored on the robot controller:
+
+```bash
+ros2 service call /kortex3_hardware/list_programs \
+  kortex3_hardware/srv/ListPrograms "{}"
+```
+
+**Example Response:**
+
+```yaml
+success: true
+message: "Found 3 program(s)."
+programs:
+  - identifier: 1
+    name: "PickAndPlace"
+  - identifier: 2
+    name: "HomePosition"
+  - identifier: 3
+    name: "CalibrationRoutine"
+```
+
+The response contains a list of all available programs with their names and internal identifiers. Use the program names when calling the `run_program` service.
+
+#### 7.5.2 Running a Specific Program
+
+To execute a program by its name (obtained from the list above):
+
+```bash
+ros2 service call /kortex3_hardware/run_program \
+  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+```
+
+**Parameters:**
+- `program_name` (string): The name of the program to run (as shown in list_programs)
+
+**Example Success Response:**
+
+```yaml
+success: true
+message: "Program 'PickAndPlace' (ID: 1) started successfully."
+```
+
+**Example Error Response (if program not found):**
+
+```yaml
+success: false
+message: "Program 'NonExistentProgram' not found. Use list_programs service to see available programs."
+```
+
+**Example Error Response (if controllers are active):**
+
+```yaml
+success: false
+message: "Cannot execute program: The following motion controllers are active: joint_velocity_controller, cartesian_motion_controller. Please stop these controllers before running a program."
+```
+
+**Safety Features:**
+- Programs are referenced by name for improved usability
+- Automatic lookup of program ID from name
+- Velocity commands are automatically blocked while a program is running
+- Commands remain blocked for 1 second after program completion to prevent interference
+- Active motion controllers are automatically detected and prevent program execution
+
+#### 7.5.3 Stopping a Running Program
+
+To stop the currently executing program:
+
+```bash
+ros2 service call /kortex3_hardware/stop_program \
+  kortex3_hardware/srv/StopProgram "{}"
+```
+
+**Example Response:**
+
+```yaml
+success: true
+message: "Program stopped successfully and operating mode set to AUTO."
+```
+
+**Behavior:**
+- Stops the currently running program immediately
+- Automatically switches the operating mode back to AUTO
+- The robot will decelerate safely according to its motion parameters
+- After stopping, ROS2 velocity controllers can be activated and used again
+
+#### 7.5.4 Checking Program Status
+
+To query the current status of the program runner:
+
+```bash
+ros2 service call /kortex3_hardware/get_program_status \
+  kortex3_hardware/srv/GetProgramStatus "{}"
+```
+
+**Example Response:**
+
+```yaml
+success: true
+status: "RUNNING"
+message: "Program runner status: RUNNING"
+```
+
+**Possible Status Values:**
+- `IDLE`: No program is running
+- `STARTING`: Program is initializing
+- `RUNNING`: Program is actively executing
+- `PAUSED`: Program execution is paused
+- `PAUSED_AUTOMATIC_RESUME`: Program paused but will resume automatically
+- `STOPPING`: Program is in the process of stopping
+- `WAITING_FOR_ACKNOWLEDGE`: Program is waiting for user acknowledgment
+- `UNSPECIFIED`: Status could not be determined
+
+#### 7.5.5 Complete Workflow Example
+
+Here's a complete example workflow for executing a program:
+
+```bash
+# 1. List available programs
+ros2 service call /kortex3_hardware/list_programs \
+  kortex3_hardware/srv/ListPrograms "{}"
+
+# 2. Stop any active motion controllers
+ros2 service call /controller_manager/switch_controller controller_manager_msgs/srv/SwitchController "{
+  deactivate_controllers: [joint_velocity_controller, cartesian_motion_controller, motion_control_handle],
+  strictness: 1,
+  activate_asap: true,
+}"
+
+
+# 3. Run the desired program (e.g., 'PickAndPlace')
+ros2 service call /kortex3_hardware/run_program \
+  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+
+# 4. Monitor the program status
+ros2 service call /kortex3_hardware/get_program_status \
+  kortex3_hardware/srv/GetProgramStatus "{}"
+
+# 5. (Optional) Stop the program if needed
+# Note: This automatically switches the operating mode back to AUTO
+ros2 service call /kortex3_hardware/stop_program \
+  kortex3_hardware/srv/StopProgram "{}"
+
+# 6. Reactivate controllers after program completion
+# The operating mode is already AUTO after stopping, so controllers can be activated
+ros2 control switch_controllers \
+  --activate cartesian_motion_controller
+```
+
+#### 7.6 Protection Zones Information
+
+The hardware interface provides a service to list protection zones that have been created in the web application.
+
+**Important Note:**
+- Protection zones can only be **created, configured, enabled, and disabled** through the web interface
+- The ROS2 service below provides read-only information about existing zones
+- Use the web interface → Safety → Protection Zones for all zones management
+
+**List Protection Zones:**
+
+```bash
+ros2 service call /kortex3_hardware/list_protection_zones \
+  kortex3_hardware/srv/ListProtectionZones "{}"
+```
+
+**Example Response:**
+
+```yaml
+success: true
+message: "Found 2 protection zone(s)."
+zones:
+  - identifier: 1
+    name: "WorkArea"
+    is_enabled: true
+  - identifier: 2
+    name: "RestrictedZone"
+    is_enabled: false
+```
+
+This service is useful for monitoring which protection zones are currently defined and their states.
+
+---
+
 
 ## 8. Calibration Workflow
 

@@ -1,0 +1,7 @@
+# Service to stop the currently running program
+
+---
+
+# Response
+bool success
+string message

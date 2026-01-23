@@ -1,0 +1,13 @@
+# Service to enable or disable a protection zone
+
+# Zone identifier (ID)
+uint32 zone_id
+
+# True to enable, False to disable
+bool enable
+
+---
+
+# Response
+bool success
+string message
