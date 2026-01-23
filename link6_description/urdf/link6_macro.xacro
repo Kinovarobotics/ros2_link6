@@ -5,16 +5,17 @@
     parent
     *origin
     prefix:=''
-    gripper
     robot_ip
     username:=admin
     password:=admin
+    use_internal_bus_gripper_comm:=false
+    gripper
+    gripper_joint_name:='finger_joint'
+    gripper_b_joint_name:='finger_joint_2'
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
-    gripper_com_port_left:=/dev/ttyUSB0
-    gripper_com_port_right:=/dev/ttyUSB1
     moveit_active:=false">
 
     <!-- Properties -->
@@ -30,14 +31,17 @@
     <xacro:include filename="$(find link6_description)/urdf/link6.ros2_control.xacro" />
     <xacro:link6_ros2_control
       prefix="${prefix}"
+      robot_ip="${robot_ip}"
+      username="${username}"
+      password="${password}"
+      use_internal_bus_gripper_comm="${use_internal_bus_gripper_comm}"
       gripper="${gripper}"
+      gripper_joint_name="${gripper_joint_name}"
+      gripper_b_joint_name="${gripper_b_joint_name}"
       use_fake_hardware="${use_fake_hardware}"
       fake_sensor_commands="${fake_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
       initial_positions="${initial_positions}"
-      robot_ip="${robot_ip}"
-      username="${username}"
-      password="${password}"
       moveit_active="${moveit_active}" />
 
 

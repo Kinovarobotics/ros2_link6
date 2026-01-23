@@ -4,15 +4,18 @@
   <xacro:macro name="link6_ros2_control"
     params="
     prefix
+    robot_ip
+    username:=admin
+    password:=admin
+    use_internal_bus_gripper_comm:=false
     gripper
+    gripper_joint_name
+    gripper_b_joint_name
+    gripper_modbus_id:=9
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}
-    robot_ip
-    username
-    password
-    gripper_modbus_id:=9
     moveit_active:=false">
 
     <ros2_control name="${prefix}Kortex3Interface" type="system">
@@ -36,6 +39,8 @@
             <param name="username">${username}</param>
             <param name="password">${password}</param>
             <param name="gripper">${gripper}</param>
+            <param name="gripper_joint_name">${gripper_joint_name}</param>
+            <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
             <param name="gripper_modbus_id">${gripper_modbus_id}</param>
           </xacro:unless>
         </xacro:unless>
@@ -45,6 +50,8 @@
           <param name="username">${username}</param>
           <param name="password">${password}</param>
           <param name="gripper">${gripper}</param>
+          <param name="gripper_joint_name">${gripper_joint_name}</param>
+          <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
           <param name="gripper_modbus_id">${gripper_modbus_id}</param>
         </xacro:if>
       </hardware>
@@ -115,43 +122,26 @@
         <state_interface name="effort" />
       </joint>
 
-      <xacro:unless value="${sim_gazebo}">
+      <!-- If using the real robot, we need to define gripper joints for the hardware interface -->
+      <xacro:unless value="${use_fake_hardware or sim_gazebo}">
+        <xacro:unless value="${not gripper}">
+          <xacro:if value="${use_internal_bus_gripper_comm}">
 
-        <xacro:if value="${gripper == 'robotiq_2f_85'}">
-          <joint name="${prefix}robotiq_85_left_knuckle_joint">
-            <command_interface name="position" />
-            <state_interface name="position" />
-            <state_interface name="velocity" />
-          </joint>
-        </xacro:if>
+            <joint name="${prefix}${gripper_joint_name}">
+              <command_interface name="position" />
+              <state_interface name="position"/>
+              <state_interface name="velocity"/>
+            </joint>
 
-        <xacro:if value="${gripper == 'robotiq_hande'}">
-          <joint name="${prefix}robotiq_hande_left_finger_joint">
-            <command_interface name="position" />
-            <state_interface name="position" />
-            <state_interface name="velocity" />
-          </joint>
-          <joint name="${prefix}robotiq_hande_left_finger_joint">
-            <command_interface name="position" />
-            <state_interface name="position" />
-            <state_interface name="velocity" />
-          </joint>
-        </xacro:if>
-
-        <xacro:if value="${gripper == 'double_robotiq_90'}">
-          <joint name="${prefix}right_robotiq_hande_left_finger_joint">
-            <command_interface name="position" />
-            <state_interface name="position" />
-            <state_interface name="velocity" />
-          </joint>
-          <joint name="${prefix}left_robotiq_hande_left_finger_joint">
-            <command_interface name="position" />
-            <state_interface name="position" />
-            <state_interface name="velocity" />
-          </joint>
-        </xacro:if>
+            <joint name="${prefix}${gripper_b_joint_name}">
+              <command_interface name="position" />
+              <state_interface name="position"/>
+              <state_interface name="velocity"/>
+            </joint>
+          </xacro:if>
+        </xacro:unless>
       </xacro:unless>
-
+      
     </ros2_control>
   </xacro:macro>
 </robot>

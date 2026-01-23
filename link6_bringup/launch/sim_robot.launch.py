@@ -23,6 +23,7 @@ def launch_setup(context, *args, **kwargs):
 
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
+    gripper_joint_name = LaunchConfiguration("gripper_joint_name")
     gui = LaunchConfiguration("gui")
     gz_args = LaunchConfiguration("gz_args")
 
@@ -38,6 +39,9 @@ def launch_setup(context, *args, **kwargs):
                 " ",
                 "gripper:=", 
                 gripper,
+                " ",
+                "gripper_joint_name:=",
+                gripper_joint_name,
                 " ",
                 "sim_gazebo:=true",
                 " ",
@@ -198,7 +202,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "gripper",      
             default_value="",
-            description='Name of the gripper attached to the arm (empty for no gripper).'
+            description='Name of the gripper attached to the arm (empty for no gripper).',
+            choices=["", "robotiq_2f_85", "robotiq_2f_140"],
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper_joint_name",      
+            default_value="robotiq_85_left_knuckle_joint",
+            description='Name of the actuated joint in the gripper to be used by the controller'
         )
     )
     declared_arguments.append(

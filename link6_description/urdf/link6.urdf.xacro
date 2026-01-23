@@ -11,6 +11,7 @@
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
     <xacro:arg name="gripper" default="" />
     <xacro:arg name="gripper_joint_name" default="finger_joint" />
+    <xacro:arg name="gripper_b_joint_name" default="finger_joint_2" />
     <xacro:arg name="gripper_max_velocity" default="100.0" />
     <xacro:arg name="gripper_max_force" default="100.0" />
     <xacro:arg name="sim_gazebo" default="false" />
@@ -19,6 +20,7 @@
     <xacro:arg name="fake_sensor_commands" default="false" />
     <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
     <xacro:arg name="use_external_cable" default="false" />
+    <xacro:property name="gripper" value="$(arg gripper)"/>
 
     <xacro:include filename="$(find link6_description)/urdf/link6_macro.xacro" />
     <!-- initial position for simulations (Mock Hardware, Gazebo) -->
@@ -32,10 +34,13 @@
     <xacro:link6
         parent="world"
         prefix="$(arg prefix)"
-        gripper="$(arg gripper)"
         robot_ip="$(arg robot_ip)"
         username="$(arg username)"
         password="$(arg password)"
+        use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)"
+        gripper="$(arg gripper)"
+        gripper_joint_name="$(arg gripper_joint_name)"
+        gripper_b_joint_name="$(arg gripper_b_joint_name)"
         use_fake_hardware="$(arg use_fake_hardware)"
         fake_sensor_commands="$(arg fake_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
@@ -43,13 +48,30 @@
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
     </xacro:link6>
 
-    <link name="$(arg prefix)tool_frame" />
-    <joint name="$(arg prefix)tool_frame_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="$(arg prefix)end_effector_link" />
-        <child link="$(arg prefix)tool_frame" />
-        <axis xyz="0 0 0" />
-    </joint>
+    <!-- If no gripper, define tool frame here -->
+    <xacro:if value="${gripper == ''}">
+        <link name="$(arg prefix)tool_frame" />
+        <joint name="$(arg prefix)tool_frame_joint" type="fixed">
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <parent link="$(arg prefix)end_effector_link" />
+            <child link="$(arg prefix)tool_frame" />
+            <axis xyz="0 0 0" />
+        </joint>
+    </xacro:if>
+
+    <!-- Include and load the gripper if defined -->
+    <xacro:if value="${gripper != ''}">
+        <xacro:include filename="$(find link6_description)/urdf/grippers/$(arg gripper)_macro.xacro" />
+        <xacro:load_gripper
+            prefix="$(arg prefix)"
+            parent="$(arg prefix)end_effector_link"
+            sim_gazebo="$(arg sim_gazebo)"
+            use_fake_hardware="$(arg use_fake_hardware)"
+            fake_sensor_commands="$(arg fake_sensor_commands)"
+            use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)">
+        </xacro:load_gripper>
+    </xacro:if>
+
 
     <xacro:if value="$(arg sim_gazebo)">
         <gazebo>
