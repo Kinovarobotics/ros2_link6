@@ -35,7 +35,7 @@
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>
-            <param name="use_gripper">${gripper != ''}</param>
+            <param name="gripper">${gripper}</param>
             <param name="gripper_modbus_id">${gripper_modbus_id}</param>
           </xacro:unless>
         </xacro:unless>
@@ -44,7 +44,7 @@
           <param name="robot_ip">${robot_ip}</param>
           <param name="username">${username}</param>
           <param name="password">${password}</param>
-          <param name="use_gripper">${gripper != ''}</param>
+          <param name="gripper">${gripper}</param>
           <param name="gripper_modbus_id">${gripper_modbus_id}</param>
         </xacro:if>
       </hardware>

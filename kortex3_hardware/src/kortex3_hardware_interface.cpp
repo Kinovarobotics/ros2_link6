@@ -24,7 +24,8 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     in_fault_(false),
     node_ptr_(nullptr),
     gripper_joint_name_(""),
-    gripper2_joint_name_("")
+    gripper2_joint_name_(""),
+    gripper_name_("")
 {
 }
 
@@ -43,7 +44,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   robot_ip_ = info_.hardware_parameters.at("robot_ip");
   username_ = info_.hardware_parameters.at("username");
   password_ = info_.hardware_parameters.at("password");
-  use_gripper_ = static_cast<bool>(std::stoul(info_.hardware_parameters.at("use_gripper")));
+  gripper_name_ = info_.hardware_parameters.at("gripper");
   gripper_modbus_id_ = static_cast<uint16_t>(std::stoul(info_.hardware_parameters.at("gripper_modbus_id")));
   if (info_.hardware_parameters.count("mqtt_port"))
   {
@@ -55,24 +56,30 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   }
 
   // gripper joint name
-  gripper_joint_name_ = info_.joints[info_.joints.size()-2].name;
-  if (gripper_joint_name_.empty())
+  if (!gripper_name_.empty())
   {
-    RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
-  }
-  else
-  {
-    RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
+    gripper_joint_name_ = info_.joints[info_.joints.size()-2].name;
+    if (gripper_joint_name_.empty())
+    {
+      RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
+    }
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
+    }
   }
 
-  gripper2_joint_name_ = info_.joints[info_.joints.size()-1].name;
-  if (gripper2_joint_name_.empty())
+  if (gripper_name_ == "robotiq_hande" || gripper_name_ == "double_robotiq_90") 
   {
-    RCLCPP_ERROR(LOGGER, "Gripper 2 joint name is empty!");
-  }
-  else
-  {
-    RCLCPP_INFO(LOGGER, "Gripper 2 joint name is '%s'", gripper2_joint_name_.c_str());
+    gripper2_joint_name_ = info_.joints[info_.joints.size()-1].name;
+    if (gripper2_joint_name_.empty())
+    {
+      RCLCPP_ERROR(LOGGER, "Gripper 2 joint name is empty!");
+    }
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper 2 joint name is '%s'", gripper2_joint_name_.c_str());
+    }
   }
 
   // Initialize state and command vectors.
@@ -85,11 +92,12 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   gripper_position_ = std::numeric_limits<double>::quiet_NaN();
 
   // Verify that the URDF's joint count matches the expected count.
-  if (info_.joints.size() != actuator_count_+2)
+  int expected_joints_number = gripper_name_.empty() ? actuator_count_ : actuator_count_+2;
+  if (info_.joints.size() != expected_joints_number)
   {
     RCLCPP_ERROR(LOGGER,
-      "URDF configuration error: Expected %zu joints, but got %zu.",
-      actuator_count_+2, info_.joints.size());
+      "URDF configuration error: Expected %d joints, but got %zu.",
+      expected_joints_number, info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -202,7 +210,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     }
     */
     // First read from gripper
-    if (use_gripper_) {
+    if (!gripper_name_.empty()) {
       auto opt_gripper_position = readGripperPosition();
       if (!opt_gripper_position.has_value())
       {
@@ -355,7 +363,7 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
 {
 
   // read gripper state
-  if (use_gripper_){
+  if (!gripper_name_.empty()){
     readGripperPosition();
   }
   try {
@@ -517,7 +525,7 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
   }
 
   //Gripper command
-  if (use_gripper_) {
+  if (!gripper_name_.empty()) {
     sendGripperCommand(gripper_command_position_);
   }
   
