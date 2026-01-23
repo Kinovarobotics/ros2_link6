@@ -43,6 +43,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   robot_ip_ = info_.hardware_parameters.at("robot_ip");
   username_ = info_.hardware_parameters.at("username");
   password_ = info_.hardware_parameters.at("password");
+  use_gripper_ = static_cast<bool>(std::stoul(info_.hardware_parameters.at("use_gripper")));
   gripper_modbus_id_ = static_cast<uint16_t>(std::stoul(info_.hardware_parameters.at("gripper_modbus_id")));
   if (info_.hardware_parameters.count("mqtt_port"))
   {
@@ -201,20 +202,22 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     }
     */
     // First read from gripper
-    auto opt_gripper_position = readGripperPosition();
-    if (!opt_gripper_position.has_value())
-    {
-      RCLCPP_WARN(LOGGER, "Failed to read gripper position on activation.");
-      return hardware_interface::CallbackReturn::ERROR;
+    if (use_gripper_) {
+      auto opt_gripper_position = readGripperPosition();
+      if (!opt_gripper_position.has_value())
+      {
+        RCLCPP_WARN(LOGGER, "Failed to read gripper position on activation.");
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      float gripper_initial_position = static_cast<float>(opt_gripper_position.value());
+      RCLCPP_INFO(LOGGER, "Gripper initial position is '%f'.", gripper_initial_position);
+
+      //to radians
+      gripper_command_position_ = gripper_initial_position;
+      gripper_2_command_position_ = gripper_initial_position;
+
+      sendGripperCommand(gripper_initial_position);
     }
-    float gripper_initial_position = static_cast<float>(opt_gripper_position.value());
-    RCLCPP_INFO(LOGGER, "Gripper initial position is '%f'.", gripper_initial_position);
-
-    //to radians
-    gripper_command_position_ = gripper_initial_position;
-    gripper_2_command_position_ = gripper_initial_position;
-
-    sendGripperCommand(gripper_initial_position);
 
     RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -352,7 +355,9 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
 {
 
   // read gripper state
-  readGripperPosition();
+  if (use_gripper_){
+    readGripperPosition();
+  }
   try {
     auto feedback = base_cyclic_udp_->RefreshFeedback();
 
@@ -512,7 +517,10 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
   }
 
   //Gripper command
-  sendGripperCommand(gripper_command_position_);
+  if (use_gripper_) {
+    sendGripperCommand(gripper_command_position_);
+  }
+  
 
   return hardware_interface::return_type::OK;
 }

@@ -142,6 +142,7 @@ private:
   std::string robot_ip_;       ///< IP address of the robot controller.
   std::string username_;       ///< Username for session authentication.
   std::string password_;       ///< Password for session authentication.
+  bool use_gripper_;           ///< Wether or not to use a gripper
   uint16_t gripper_modbus_id_; ///< The modbus ID to communicate with the gripper
   int mqtt_port_;              ///< TCP port for MQTT communication (commands).
   int udp_feedback_port_;      ///< UDP port for high-frequency feedback.
