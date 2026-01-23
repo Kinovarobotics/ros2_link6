@@ -1,0 +1,10 @@
+# Service to list all programs stored on the robot controller
+
+---
+
+# Response
+bool success
+string message
+
+# Array of program information
+ProgramInfo[] programs

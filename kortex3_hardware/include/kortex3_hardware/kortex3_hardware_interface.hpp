@@ -32,8 +32,13 @@
 #include "SessionClientRpc.h"
 #include "BaseClientRpc.h"
 #include "BaseCyclicClientRpc.h"
+#include "ProgramRunnerClientRpc.h"
+#include "ProtectionZoneClientRpc.h"
 #include "Base.pb.h"
 #include "Common.pb.h"
+#include "ProgramRunner.pb.h"
+#include "ProgramConfig.pb.h"
+#include "ProtectionZone.pb.h"
 #include "TransportClientUdp.h"
 
 // ROS 2 Headers
@@ -46,8 +51,17 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "kortex3_hardware/srv/set_operating_mode.hpp"
 #include "kortex3_hardware/srv/clear_faults.hpp"
+#include "kortex3_hardware/srv/simulate_estop.hpp"
+#include "kortex3_hardware/srv/run_program.hpp"
+#include "kortex3_hardware/srv/list_programs.hpp"
+#include "kortex3_hardware/srv/stop_program.hpp"
+#include "kortex3_hardware/srv/get_program_status.hpp"
+#include "kortex3_hardware/srv/list_protection_zones.hpp"
+#include "kortex3_hardware/msg/program_info.hpp"
+#include "kortex3_hardware/msg/protection_zone_info.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include "controller_manager_msgs/srv/list_controllers.hpp"
 
 // Robotiq gripper plugin headers
 #include "robotiq_gripper/Grippers/FingerGripper.h"
@@ -135,8 +149,32 @@ private:
   void handle_clear_faults(
       const std::shared_ptr<kortex3_hardware::srv::ClearFaults::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response);
+  void handle_simulate_estop(
+      const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response);
+  void handle_run_program(
+      const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response);
+  void handle_list_programs(
+      const std::shared_ptr<kortex3_hardware::srv::ListPrograms::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::ListPrograms::Response> response);
+  void handle_stop_program(
+      const std::shared_ptr<kortex3_hardware::srv::StopProgram::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::StopProgram::Response> response);
+  void handle_get_program_status(
+      const std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::GetProgramStatus::Response> response);
+  void handle_list_protection_zones(
+      const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> request,
+      std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response);
   std::optional<double> readGripperPosition();
   void sendGripperCommand(double position_radians);
+
+  // Helper function to check if a program status represents an active program
+  bool is_program_active(k_api::ProgramRunner::Status status) const;
+
+  // Helper function to check if unsafe controllers are active
+  bool check_unsafe_controllers_active(std::string& error_message);
 
   // --- Connection Parameters ---
   std::string robot_ip_;      ///< IP address of the robot controller.
@@ -149,6 +187,8 @@ private:
   std::shared_ptr<k_api::RouterMQTT> router_mqtt_;
   std::shared_ptr<k_api::Session::SessionClient> session_mqtt_;
   std::shared_ptr<k_api::Base::BaseClient> base_mqtt_;
+  std::shared_ptr<k_api::ProgramRunner::ProgramRunnerClient> program_runner_;
+  std::shared_ptr<k_api::ProtectionZone::ProtectionZoneClient> protection_zone_;
   std::unique_ptr<k_api::TransportClientUdp> transport_udp_feedback_;
   std::unique_ptr<k_api::RouterClient> router_udp_feedback_;
   std::unique_ptr<k_api::SessionManager> session_udp_;
@@ -184,12 +224,22 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_publisher_;
   rclcpp::Service<kortex3_hardware::srv::SetOperatingMode>::SharedPtr set_operating_mode_service_;
   rclcpp::Service<kortex3_hardware::srv::ClearFaults>::SharedPtr clear_faults_service_;
+  rclcpp::Service<kortex3_hardware::srv::SimulateEstop>::SharedPtr simulate_estop_service_;
+  rclcpp::Service<kortex3_hardware::srv::RunProgram>::SharedPtr run_program_service_;
+  rclcpp::Service<kortex3_hardware::srv::ListPrograms>::SharedPtr list_programs_service_;
+  rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;
+  rclcpp::Service<kortex3_hardware::srv::GetProgramStatus>::SharedPtr get_program_status_service_;
+  rclcpp::Service<kortex3_hardware::srv::ListProtectionZones>::SharedPtr list_protection_zones_service_;
 
   // --- Internal State Flags ---
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};
   Kinova::Api::Common::OperatingModeType  last_operating_mode_{Kinova::Api::Common::OPERATING_MODE_UNSPECIFIED};
   bool                                    in_fault_{false}; ///< Flag to indicate if the robot is in a fault state.
   bool                                    fault_reported_{false};
+
+  // Program runner state tracking
+  Kinova::Api::ProgramRunner::Status last_program_status_{Kinova::Api::ProgramRunner::STATUS_IDLE};
+  std::chrono::steady_clock::time_point program_end_time_{};
 
   ///< Static logger for the class.
   static const rclcpp::Logger LOGGER;

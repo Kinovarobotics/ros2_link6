@@ -1,0 +1,10 @@
+# Service to list all protection zones stored on the robot controller
+
+---
+
+# Response
+bool success
+string message
+
+# Array of protection zone information
+ProtectionZoneInfo[] zones
