@@ -18,6 +18,7 @@ def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
     gripper_joint_name = LaunchConfiguration("gripper_joint_name")
+    use_internal_bus_gripper_comm = LaunchConfiguration("use_internal_bus_gripper_comm")
 
     robot_description = Command(
         [
@@ -32,6 +33,9 @@ def launch_setup(context, *args, **kwargs):
             " ",
             "gripper_joint_name:=",
             gripper_joint_name,
+            " ",
+            "use_internal_bus_gripper_comm:=",
+            use_internal_bus_gripper_comm,
             " ",
         ]
     )
@@ -161,6 +165,13 @@ def generate_launch_description():
             "gripper_joint_name",      
             default_value="robotiq_85_left_knuckle_joint",
             description='Name of the actuated joint in the gripper to be used by the controller'
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "use_internal_bus_gripper_comm",
+            default_value="true",
+            description="Use internal bus for gripper communication?",
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

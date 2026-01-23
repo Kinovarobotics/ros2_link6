@@ -206,7 +206,8 @@ private:
   std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
   std::unique_ptr<MyFingerGripper> gripper_;
   std::string gripper_joint_name_;
-  std::string gripper2_joint_name_;
+  std::string gripper_b_joint_name_;
+  bool use_internal_bus_gripper_comm_;
   double gripper_command_position_ = 0.0;
   double gripper_2_command_position_ = 0.0;
   double gripper_position_ = 0.0;

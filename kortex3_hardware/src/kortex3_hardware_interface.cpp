@@ -24,8 +24,9 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     in_fault_(false),
     node_ptr_(nullptr),
     gripper_joint_name_(""),
-    gripper2_joint_name_(""),
-    gripper_name_("")
+    gripper_b_joint_name_(""),
+    gripper_name_(""),
+    use_internal_bus_gripper_comm_(false)
 {
 }
 
@@ -55,31 +56,33 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     udp_feedback_port_ = std::stoi(info_.hardware_parameters.at("udp_feedback_port"));
   }
 
-  // gripper joint name
-  if (!gripper_name_.empty())
+  // Read gripper joint names
+  gripper_joint_name_ = info_.hardware_parameters["gripper_joint_name"];
+  if (gripper_joint_name_.empty())
   {
-    gripper_joint_name_ = info_.joints[info_.joints.size()-2].name;
-    if (gripper_joint_name_.empty())
-    {
-      RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
-    }
-    else
-    {
-      RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
-    }
+    RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
   }
 
-  if (gripper_name_ == "robotiq_hande" || gripper_name_ == "double_robotiq_90") 
+  gripper_b_joint_name_ = info_.hardware_parameters["gripper_b_joint_name"];
+  if (gripper_b_joint_name_.empty())
   {
-    gripper2_joint_name_ = info_.joints[info_.joints.size()-1].name;
-    if (gripper2_joint_name_.empty())
-    {
-      RCLCPP_ERROR(LOGGER, "Gripper 2 joint name is empty!");
-    }
-    else
-    {
-      RCLCPP_INFO(LOGGER, "Gripper 2 joint name is '%s'", gripper2_joint_name_.c_str());
-    }
+    RCLCPP_ERROR(LOGGER, "Gripper B joint name is empty!");
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "Gripper B joint name is '%s'", gripper_b_joint_name_.c_str());
+  }
+
+  if (
+    (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "true") ||
+    (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "True"))
+  {
+    use_internal_bus_gripper_comm_ = true;
+    RCLCPP_INFO(LOGGER, "Using internal bus communication for gripper!");
   }
 
   // Initialize state and command vectors.
@@ -378,7 +381,7 @@ Kortex3HardwareInterface::export_state_interfaces()
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
-    if (info_.joints[i].name == gripper_joint_name_ || info_.joints[i].name == gripper2_joint_name_)
+    if (info_.joints[i].name == gripper_joint_name_ || info_.joints[i].name == gripper_b_joint_name_)
     {
       state_interfaces.emplace_back(hardware_interface::StateInterface(
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_position_));
@@ -415,7 +418,7 @@ Kortex3HardwareInterface::export_command_interfaces()
       command_interfaces.emplace_back(hardware_interface::CommandInterface(
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_command_position_));
     }
-    else if (info_.joints[i].name == gripper2_joint_name_)
+    else if (info_.joints[i].name == gripper_b_joint_name_)
     {
       command_interfaces.emplace_back(hardware_interface::CommandInterface(
         info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_2_command_position_));
@@ -539,56 +542,63 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
 
 std::optional<double> Kortex3HardwareInterface::readGripperPosition()
 {
-  // 1) Rate-limit BEFORE touching the mutex
-  const auto now = std::chrono::steady_clock::now();
-  if (now < next_gripper_poll_) {
-    return gripper_position_;  // return cached value
-  }
+  if (use_internal_bus_gripper_comm_)
+  {
+    // 1) Rate-limit BEFORE touching the mutex
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_gripper_poll_) {
+      return gripper_position_;  // return cached value
+    }
 
-  // 2) Try to acquire the mutex without blocking the control loop
-  std::unique_lock<std::mutex> lk(gripper_mtx_, std::try_to_lock);
-  if (!lk.owns_lock()) {
-    // Another Modbus op in-flight; try again soon without blocking
-    next_gripper_poll_ = now + std::chrono::milliseconds(10);
-    return gripper_position_;
-  }
+    // 2) Try to acquire the mutex without blocking the control loop
+    std::unique_lock<std::mutex> lk(gripper_mtx_, std::try_to_lock);
+    if (!lk.owns_lock()) {
+      // Another Modbus op in-flight; try again soon without blocking
+      next_gripper_poll_ = now + std::chrono::milliseconds(10);
+      return gripper_position_;
+    }
 
-  // 3) Lazy init once
-  if (!gripper_initialized_) {
-    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_modbus_id_);
+    // 3) Lazy init once
+    if (!gripper_initialized_) {
+      modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_modbus_id_);
 
-    if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
-      RCLCPP_WARN(LOGGER, "Modbus init failed; will retry later.");
-      next_gripper_poll_ = now + gripper_poll_period_;
+      if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
+        RCLCPP_WARN(LOGGER, "Modbus init failed; will retry later.");
+        next_gripper_poll_ = now + gripper_poll_period_;
+        return std::nullopt;
+      }
+
+      gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
+      gripper_initialized_ = true;
+    }
+
+    // 4) Read once; if it fails, reconnect and retry once (no sleeps)
+    bool ok = gripper_->ReadRegister();
+    if (!ok) {
+      RCLCPP_WARN(LOGGER, "ReadRegister() failed; reconnecting and retrying once");
+      modbus_wrapper_->CloseConnection();
+      if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+        ok = gripper_->ReadRegister();
+      }
+    }
+
+    // Set next poll time regardless, so we don’t hammer on failures
+    next_gripper_poll_ = now + gripper_poll_period_;
+
+    if (!ok) {
       return std::nullopt;
     }
 
-    gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
-    gripper_initialized_ = true;
+    // 5) Decode & cache
+    const uint8_t raw = gripper_->GetPosition();
+    gripper_position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);  // rad
+    //std::cout << "Gripper position: " << gripper_position_ << std::endl;
+    return gripper_position_;
   }
-
-  // 4) Read once; if it fails, reconnect and retry once (no sleeps)
-  bool ok = gripper_->ReadRegister();
-  if (!ok) {
-    RCLCPP_WARN(LOGGER, "ReadRegister() failed; reconnecting and retrying once");
-    modbus_wrapper_->CloseConnection();
-    if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
-      ok = gripper_->ReadRegister();
-    }
-  }
-
-  // Set next poll time regardless, so we don’t hammer on failures
-  next_gripper_poll_ = now + gripper_poll_period_;
-
-  if (!ok) {
+  else
+  {
     return std::nullopt;
   }
-
-  // 5) Decode & cache
-  const uint8_t raw = gripper_->GetPosition();
-  gripper_position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);  // rad
-  //std::cout << "Gripper position: " << gripper_position_ << std::endl;
-  return gripper_position_;
 }
 
 
@@ -659,46 +669,49 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
 
 void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
 {
-  // --- Gate BEFORE locking to avoid needless contention ---
-  const auto now = std::chrono::steady_clock::now();
-
-  // Limit command rate
-  if (now < next_gripper_send_) return;
-
-  // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 1.0);
-  if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
-      std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
+  if (use_internal_bus_gripper_comm_)
   {
-    return;
+    // --- Gate BEFORE locking to avoid needless contention ---
+    const auto now = std::chrono::steady_clock::now();
+
+    // Limit command rate
+    if (now < next_gripper_send_) return;
+
+    // Clamp into stroke and skip tiny, redundant updates
+    const double clamped = std::clamp(position_radians, 0.0, 1.0);
+    if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
+        std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
+    {
+      return;
+    }
+
+    // --- Serialize Modbus access ---
+    std::lock_guard<std::mutex> lk(gripper_mtx_);
+    if (!gripper_initialized_ || !gripper_) return;
+
+    const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
+    const uint8_t spd = 255;
+
+    // Best-effort write sequence (no sleeps, no loop blocking)
+    gripper_->ClearGoToRequest();
+    (void)gripper_->SendRequest();
+
+    gripper_->SetPositionRequest(pos);
+    gripper_->SetSpeedRequest(spd);
+    gripper_->SetGoToRequest();
+    (void)gripper_->SendRequest();
+
+    // Optionally: quick reconnect + one retry if your API returns a bool
+    // if (!gripper_->SendRequest()) {
+    //   modbus_wrapper_->CloseConnection();
+    //   if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+    //     (void)gripper_->SendRequest();
+    //   }
+    // }
+
+    last_gripper_cmd_pos_ = clamped;
+    next_gripper_send_    = now + gripper_cmd_period_;
   }
-
-  // --- Serialize Modbus access ---
-  std::lock_guard<std::mutex> lk(gripper_mtx_);
-  if (!gripper_initialized_ || !gripper_) return;
-
-  const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
-  const uint8_t spd = 255;
-
-  // Best-effort write sequence (no sleeps, no loop blocking)
-  gripper_->ClearGoToRequest();
-  (void)gripper_->SendRequest();
-
-  gripper_->SetPositionRequest(pos);
-  gripper_->SetSpeedRequest(spd);
-  gripper_->SetGoToRequest();
-  (void)gripper_->SendRequest();
-
-  // Optionally: quick reconnect + one retry if your API returns a bool
-  // if (!gripper_->SendRequest()) {
-  //   modbus_wrapper_->CloseConnection();
-  //   if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
-  //     (void)gripper_->SendRequest();
-  //   }
-  // }
-
-  last_gripper_cmd_pos_ = clamped;
-  next_gripper_send_    = now + gripper_cmd_period_;
 }
 
 

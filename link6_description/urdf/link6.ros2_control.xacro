@@ -38,6 +38,7 @@
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>
+            <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
             <param name="gripper">${gripper}</param>
             <param name="gripper_joint_name">${gripper_joint_name}</param>
             <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
@@ -49,6 +50,7 @@
           <param name="robot_ip">${robot_ip}</param>
           <param name="username">${username}</param>
           <param name="password">${password}</param>
+          <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
           <param name="gripper">${gripper}</param>
           <param name="gripper_joint_name">${gripper_joint_name}</param>
           <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
