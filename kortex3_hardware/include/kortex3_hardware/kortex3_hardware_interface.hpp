@@ -91,6 +91,67 @@ public:
   }
 };
 
+/**
+ * @class GripperController
+ * @brief Encapsulates state and operations for a single Robotiq gripper.
+ */
+class GripperController {
+public:
+  explicit GripperController(uint16_t default_modbus_id = 9)
+    : modbus_id_(default_modbus_id) {}
+
+  // Configuration
+  std::string joint_name_;
+  uint16_t modbus_id_;
+
+  // Modbus communication
+  std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
+  std::unique_ptr<MyFingerGripper> gripper_;
+  bool initialized_ = false;
+
+  // State
+  double command_position_ = 0.0;
+  double position_ = 0.0;
+  double velocity_ = 0.0;
+
+  // Timing for rate limiting
+  std::chrono::steady_clock::time_point next_send_{};
+  std::chrono::steady_clock::time_point next_poll_{};
+  double last_cmd_pos_{std::numeric_limits<double>::quiet_NaN()};
+
+  static constexpr std::chrono::milliseconds cmd_period_{50};   // 20 Hz
+  static constexpr std::chrono::milliseconds poll_period_{100}; // 10 Hz
+
+  /**
+   * @brief Initialize and activate the gripper
+   * @param router MQTT router for Modbus communication
+   * @param logger ROS logger for messages
+   * @return true if successful
+   */
+  bool initialize(std::shared_ptr<k_api::RouterMQTT> router, const rclcpp::Logger& logger);
+
+  /**
+   * @brief Read gripper position from Modbus
+   * @param mutex Mutex protecting Modbus access (shared between grippers)
+   * @param logger ROS logger for messages
+   * @return Optional position value in radians
+   */
+  std::optional<double> readPosition(std::mutex& mutex, const rclcpp::Logger& logger);
+
+  /**
+   * @brief Send position command to gripper via Modbus
+   * @param position_radians Desired position in radians
+   * @param mutex Mutex protecting Modbus access (shared between grippers)
+   */
+  void sendCommand(double position_radians, std::mutex& mutex);
+
+  /**
+   * @brief Close Modbus connection and reset gripper
+   * @param mutex Mutex protecting Modbus access (shared between grippers)
+   */
+  void shutdown(std::mutex& mutex);
+};
+
 class Kortex3HardwareInterface : public hardware_interface::SystemInterface
 {
 public:
@@ -136,7 +197,6 @@ public:
   bool calibrate_robot();
 
 private:
-  std::mutex gripper_mtx_;
   // --- Private Helper Methods ---
   void check_and_power_on_robot();
   void send_zero_velocities();
@@ -167,8 +227,6 @@ private:
   void handle_list_protection_zones(
       const std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ListProtectionZones::Response> response);
-  std::optional<double> readGripperPosition();
-  void sendGripperCommand(double position_radians);
 
   // Helper function to check if a program status represents an active program
   bool is_program_active(k_api::ProgramRunner::Status status) const;
@@ -202,25 +260,12 @@ private:
   std::vector<double> joint_positions_;      ///< Buffer for joint position states.
   std::vector<double> joint_velocities_;     ///< Buffer for joint velocity states.
   std::vector<double> joint_torques_;        ///< Buffer for joint torque states.
-  // Gripper
-  std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
-  std::unique_ptr<MyFingerGripper> gripper_;
-  std::string gripper_joint_name_;
-  std::string gripper_b_joint_name_;
+
+  // Gripper controllers
   bool use_internal_bus_gripper_comm_;
-  double gripper_command_position_ = 0.0;
-  double gripper_2_command_position_ = 0.0;
-  double gripper_position_ = 0.0;
-  double gripper_velocity_ = 0.0;
-  bool gripper_initialized_ = false;
-  // Timing
-  // Gripper send gating (tune periods as you like) for write
-  std::chrono::steady_clock::time_point next_gripper_send_{};
-  double last_gripper_cmd_pos_{std::numeric_limits<double>::quiet_NaN()};
-  const std::chrono::milliseconds gripper_cmd_period_{50};   // 20 Hz send budget
-  // Poll gating (avoid spamming Modbus) for read
-  std::chrono::steady_clock::time_point next_gripper_poll_{};
-  const std::chrono::milliseconds gripper_poll_period_{100};  // 10 Hz
+  GripperController gripper_a_;
+  GripperController gripper_b_;
+  std::mutex gripper_mtx_;  ///< Shared mutex for all Modbus operations
 
 
 

@@ -9,9 +9,10 @@
     password:=admin
     use_internal_bus_gripper_comm:=false
     gripper
-    gripper_joint_name
-    gripper_b_joint_name
+    gripper_joint_name:=''
+    gripper_b_joint_name:=''
     gripper_modbus_id:=9
+    gripper_b_modbus_id:=10
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
@@ -43,6 +44,7 @@
             <param name="gripper_joint_name">${gripper_joint_name}</param>
             <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
             <param name="gripper_modbus_id">${gripper_modbus_id}</param>
+            <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
           </xacro:unless>
         </xacro:unless>
         <xacro:if value="${moveit_active}">
@@ -55,6 +57,7 @@
           <param name="gripper_joint_name">${gripper_joint_name}</param>
           <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
           <param name="gripper_modbus_id">${gripper_modbus_id}</param>
+          <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
         </xacro:if>
       </hardware>
       <joint name="${prefix}joint_1">
@@ -129,17 +132,23 @@
         <xacro:unless value="${not gripper}">
           <xacro:if value="${use_internal_bus_gripper_comm}">
 
-            <joint name="${prefix}${gripper_joint_name}">
-              <command_interface name="position" />
-              <state_interface name="position"/>
-              <state_interface name="velocity"/>
-            </joint>
+            <!-- Gripper A joint (only if gripper_joint_name is defined and not empty) -->
+            <xacro:unless value="${gripper_joint_name == '' or gripper_joint_name == None}">
+              <joint name="${prefix}${gripper_joint_name}">
+                <command_interface name="position" />
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+              </joint>
+            </xacro:unless>
 
-            <joint name="${prefix}${gripper_b_joint_name}">
-              <command_interface name="position" />
-              <state_interface name="position"/>
-              <state_interface name="velocity"/>
-            </joint>
+            <!-- Gripper B joint (only if gripper_b_joint_name is defined and not empty) -->
+            <xacro:unless value="${gripper_b_joint_name == '' or gripper_b_joint_name == None}">
+              <joint name="${prefix}${gripper_b_joint_name}">
+                <command_interface name="position" />
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+              </joint>
+            </xacro:unless>
           </xacro:if>
         </xacro:unless>
       </xacro:unless>

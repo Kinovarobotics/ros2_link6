@@ -11,7 +11,7 @@
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
     <xacro:arg name="gripper" default="" />
     <xacro:arg name="gripper_joint_name" default="finger_joint" />
-    <xacro:arg name="gripper_b_joint_name" default="finger_joint_2" />
+    <xacro:arg name="gripper_b_joint_name" default="" />
     <xacro:arg name="gripper_max_velocity" default="100.0" />
     <xacro:arg name="gripper_max_force" default="100.0" />
     <xacro:arg name="sim_gazebo" default="false" />
