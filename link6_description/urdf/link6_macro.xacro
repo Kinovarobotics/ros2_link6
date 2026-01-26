@@ -12,6 +12,8 @@
     gripper
     gripper_joint_name:=''
     gripper_b_joint_name:=''
+    gripper_modbus_id:=9
+    gripper_b_modbus_id:=10
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
@@ -38,6 +40,8 @@
       gripper="${gripper}"
       gripper_joint_name="${gripper_joint_name}"
       gripper_b_joint_name="${gripper_b_joint_name}"
+      gripper_modbus_id="${gripper_modbus_id}"
+      gripper_b_modbus_id="${gripper_b_modbus_id}"
       use_fake_hardware="${use_fake_hardware}"
       fake_sensor_commands="${fake_sensor_commands}"
       sim_gazebo="${sim_gazebo}"

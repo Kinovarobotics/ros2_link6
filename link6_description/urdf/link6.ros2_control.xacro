@@ -41,8 +41,8 @@
             <param name="password">${password}</param>
             <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
             <param name="gripper">${gripper}</param>
-            <param name="gripper_joint_name">${gripper_joint_name}</param>
-            <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
+            <param name="gripper_joint_name">${prefix}${gripper_joint_name}</param>
+            <param name="gripper_b_joint_name">${prefix}${gripper_b_joint_name}</param>
             <param name="gripper_modbus_id">${gripper_modbus_id}</param>
             <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
           </xacro:unless>
@@ -54,8 +54,8 @@
           <param name="password">${password}</param>
           <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
           <param name="gripper">${gripper}</param>
-          <param name="gripper_joint_name">${gripper_joint_name}</param>
-          <param name="gripper_b_joint_name">${gripper_b_joint_name}</param>
+          <param name="gripper_joint_name">${prefix}${gripper_joint_name}</param>
+          <param name="gripper_b_joint_name">${prefix}${gripper_b_joint_name}</param>
           <param name="gripper_modbus_id">${gripper_modbus_id}</param>
           <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
         </xacro:if>

@@ -10,8 +10,10 @@
     <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
     <xacro:arg name="gripper" default="" />
-    <xacro:arg name="gripper_joint_name" default="finger_joint" />
+    <xacro:arg name="gripper_joint_name" default="" />
     <xacro:arg name="gripper_b_joint_name" default="" />
+    <xacro:arg name="gripper_modbus_id" default="9" />
+    <xacro:arg name="gripper_b_modbus_id" default="10" />
     <xacro:arg name="gripper_max_velocity" default="100.0" />
     <xacro:arg name="gripper_max_force" default="100.0" />
     <xacro:arg name="sim_gazebo" default="false" />
@@ -41,6 +43,8 @@
         gripper="$(arg gripper)"
         gripper_joint_name="$(arg gripper_joint_name)"
         gripper_b_joint_name="$(arg gripper_b_joint_name)"
+        gripper_modbus_id="$(arg gripper_modbus_id)"
+        gripper_b_modbus_id="$(arg gripper_b_modbus_id)"
         use_fake_hardware="$(arg use_fake_hardware)"
         fake_sensor_commands="$(arg fake_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
