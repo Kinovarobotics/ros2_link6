@@ -1,0 +1,41 @@
+# Default calibration data for Link6 robot
+# This file contains the nominal (uncalibrated) joint origin values
+#
+# To generate robot-specific calibration:
+# 1. Download calibration from your robot:
+#    ros2 launch kortex3_hardware get_calibration.launch.py \
+#        robot_ip:=192.168.1.10 \
+#        calibration_dir:=/path/to/link6_description/config
+# 2. Use the generated YAML file in your launch file:
+#    ros2 launch link6_bringup real_robot.launch.py \
+#        calibration_file:=/path/to/your_robot_calibration
+
+# Joint 1: Base to Shoulder
+joint_1:
+  xyz: "0 0 0.053"
+  rpy: "3.141592653589793 0 0"
+
+# Joint 2: Shoulder to Arm
+joint_2:
+  xyz: "0.11024 -0.069257 -0.1375"
+  rpy: "-1.5707963267948966 0 0"
+
+# Joint 3: Arm to Forearm
+joint_3:
+  xyz: "0 0.485 0"
+  rpy: "-3.141592653589793 0 0"
+
+# Joint 4: Forearm to Lower Wrist
+joint_4:
+  xyz: "0 -0.15216 -0.091704"
+  rpy: "-1.5707963267948966 0 0"
+
+# Joint 5: Lower Wrist to Upper Wrist
+joint_5:
+  xyz: "0 -0.062957 -0.22275"
+  rpy: "-1.5707963267948966 0 0"
+
+# Joint 6: Upper Wrist to Wrist Interface
+joint_6:
+  xyz: "0.087028 0.086 -0.076922"
+  rpy: "0 -1.5707963267948966 0"

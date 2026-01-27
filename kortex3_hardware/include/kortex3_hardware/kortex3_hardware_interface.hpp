@@ -122,19 +122,6 @@ public:
   /** @brief Gets the current joint torques. For debugging. */
   const std::vector<double>& get_joint_torques() const { return joint_torques_; }
 
-  /**
-   * @brief Fetches the robot's calibration data and saves it to a file.
-   * @param dst The destination file path.
-   * @return True on success, false otherwise.
-   */
-  bool dump_calibration(const std::string& dst);
-
-  /**
-   * @brief Triggers the full robot calibration process, generating a calibrated URDF.
-   * @return True on success, false otherwise.
-   */
-  bool calibrate_robot();
-
 private:
   std::mutex gripper_mtx_;
   // --- Private Helper Methods ---
@@ -142,6 +129,8 @@ private:
   void send_zero_velocities();
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
 
+  // Controller management helpers for fault recovery
+  std::vector<std::string> get_active_motion_controllers();
   // --- ROS Service Handlers ---
   void handle_set_operating_mode(
       const std::shared_ptr<kortex3_hardware::srv::SetOperatingMode::Request> request,
@@ -235,11 +224,16 @@ private:
   Kinova::Api::Common::ArmState           last_arm_state_{Kinova::Api::Common::ARMSTATE_UNSPECIFIED};
   Kinova::Api::Common::OperatingModeType  last_operating_mode_{Kinova::Api::Common::OPERATING_MODE_UNSPECIFIED};
   bool                                    in_fault_{false}; ///< Flag to indicate if the robot is in a fault state.
+  bool                                    pending_controller_deactivation_{false}; ///< Flag to trigger controller deactivation from read()
+  std::vector<std::string>                controllers_to_deactivate_; ///< Controllers to deactivate after recovery
+  int                                     deactivation_verify_countdown_{0}; ///< Cycles to wait before verifying deactivation
   bool                                    fault_reported_{false};
-
+  bool                                    fault_recently_logged_{false}; ///< Rate limiting flag for fault logging
+  
   // Program runner state tracking
   Kinova::Api::ProgramRunner::Status last_program_status_{Kinova::Api::ProgramRunner::STATUS_IDLE};
   std::chrono::steady_clock::time_point program_end_time_{};
+  std::chrono::steady_clock::time_point   last_fault_log_time_{}; ///< Last time fault was logged
 
   ///< Static logger for the class.
   static const rclcpp::Logger LOGGER;

@@ -1,0 +1,26 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: link6_description
+    relative_path: urdf/link6.urdf.xacro
+    xacro_args: gripper:=robotiq_2f_85
+  srdf:
+    relative_path: config/link6.srdf
+  package_settings:
+    author_name: Rafael Gomes Braga
+    author_email: rgbraga@kinova.ca
+    generated_timestamp: 1759855405
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+      - velocity

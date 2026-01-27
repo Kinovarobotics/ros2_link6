@@ -8,6 +8,9 @@
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include <thread>
 #include <string>
+#include <iostream>
+#include <fstream>
+#include <algorithm>
 
 namespace kortex3_driver
 {
@@ -178,13 +181,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       actuator_count_ = actuator_info.count();
     }
 
-    // 5. Generate and load robot calibration.
-    // if (!calibrate_robot())
-    // {
-    //     RCLCPP_WARN(LOGGER, "Calibration generation failed; using nominal model.");
-    // }
-
-    // 6. Set the initial operating mode for velocity control.
+    // 5. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
 
@@ -218,7 +215,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     gripper_->SendRequest();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     gripper_->ReadRegister();
-
+  
     // Poll until activation completes (timeout: 10 seconds)
     const auto activation_timeout = std::chrono::seconds(10);
     auto activation_start = std::chrono::steady_clock::now();
@@ -404,6 +401,12 @@ Kortex3HardwareInterface::export_command_interfaces()
 hardware_interface::return_type Kortex3HardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  static int read_call_count = 0;
+  read_call_count++;
+
+  if (read_call_count % 1000 == 0) {
+    RCLCPP_DEBUG(LOGGER, "read() called %d times", read_call_count);
+  }
 
   // read gripper state
   readGripperPosition();
@@ -433,13 +436,36 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
         new_state == Kinova::Api::Common::ARMSTATE_IN_FAULT_POWERED_OFF)
     {
       in_fault_ = true;
-      RCLCPP_ERROR(LOGGER, "Robot arm is in FAULT (state=%s).",
-                   Kinova::Api::Common::ArmState_Name(new_state).c_str());
-      RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
+
+      // Rate limiting: only log full error message once per second
+      auto now = std::chrono::steady_clock::now();
+      auto time_since_last_log = std::chrono::duration_cast<std::chrono::seconds>(
+          now - last_fault_log_time_);
+
+      if (!fault_recently_logged_ || time_since_last_log.count() >= 1) {
+        if (!fault_recently_logged_) {
+          // First fault detection - log full error message
+          RCLCPP_ERROR(LOGGER, "═══════════════════════════════════════════════════════════");
+          RCLCPP_ERROR(LOGGER, "ROBOT FAULT DETECTED - State: %s",
+                       Kinova::Api::Common::ArmState_Name(new_state).c_str());
+          RCLCPP_ERROR(LOGGER, "RECOVERY STEPS:");
+          RCLCPP_ERROR(LOGGER, "  1. Check robot teach pendant for error details");
+          RCLCPP_ERROR(LOGGER, "  2. Clear faults: ros2 service call /kortex3_hardware/clear_faults \\");
+          RCLCPP_ERROR(LOGGER, "       kortex3_hardware/srv/ClearFaults \"{}\"");
+          RCLCPP_ERROR(LOGGER, "  3. If issue persists, power cycle the robot");
+          RCLCPP_ERROR(LOGGER, "═══════════════════════════════════════════════════════════");
+          fault_recently_logged_ = true;
+        } else {
+          // Periodic update after 1 second
+          RCLCPP_WARN(LOGGER, "Robot still in fault state: %s",
+                      Kinova::Api::Common::ArmState_Name(new_state).c_str());
+        }
+        last_fault_log_time_ = now;
+      }
+
       rclcpp::spin_some(node_ptr_);
       return hardware_interface::return_type::OK;
     }
-
     // 3. Detect operating mode changes.
     auto new_mode = feedback.base().operating_mode();
     if (new_mode != last_operating_mode_) {
@@ -448,7 +474,6 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
         Kinova::Api::Common::OperatingModeType_Name(new_mode).c_str());
       last_operating_mode_ = new_mode;
     }
-
     // 3.5. Track program runner status for velocity command blocking.
     try {
       auto current_program_status = program_runner_->GetStatus();
@@ -474,6 +499,128 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
     catch (const k_api::KDetailedException &ex) {
       // Don't spam logs if program runner is not available or busy
       RCLCPP_DEBUG(LOGGER, "Failed to get program status in read(): %s", ex.what());
+    }
+    // Handle pending controller deactivation (scheduled from handle_clear_faults)
+    if (pending_controller_deactivation_) {
+      std::cout << "\n=== Executing Scheduled Controller Deactivation ===" << std::endl;
+      RCLCPP_INFO(LOGGER, "Sending async request to deactivate %zu controller(s)...",
+                  controllers_to_deactivate_.size());
+
+      // Fire off the deactivation request in a detached thread - DON'T wait for response
+      std::thread([controllers = controllers_to_deactivate_]() {
+        try {
+          auto temp_node = std::make_shared<rclcpp::Node>("controller_deactivate_async");
+          auto temp_client = temp_node->create_client<controller_manager_msgs::srv::SwitchController>(
+              "/controller_manager/switch_controller");
+
+          if (!temp_client->wait_for_service(std::chrono::milliseconds(500))) {
+            std::cout << "WARNING: Controller manager service not available" << std::endl;
+            return;
+          }
+
+          auto request = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
+          request->activate_controllers = {};
+          request->deactivate_controllers = controllers;
+          request->strictness = controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
+          request->activate_asap = false;
+          request->timeout = rclcpp::Duration::from_seconds(10.0);
+
+          // Send request asynchronously and detach - let it complete in background
+          auto future = temp_client->async_send_request(request);
+          std::cout << "Controller deactivation request sent asynchronously" << std::endl;
+
+          // Spin to allow request to be sent, but don't block waiting for response
+          rclcpp::executors::SingleThreadedExecutor executor;
+          executor.add_node(temp_node);
+          executor.spin_some();
+
+        } catch (const std::exception& ex) {
+          std::cout << "Exception in async controller deactivation: " << ex.what() << std::endl;
+        }
+      }).detach();
+
+      std::cout << "Controller deactivation request fired asynchronously. Will verify in subsequent cycles." << std::endl;
+
+      // Clear the flag - we've sent the request
+      pending_controller_deactivation_ = false;
+      // Set countdown to verify after ~1000 cycles (about 1 second at 1kHz)
+      deactivation_verify_countdown_ = 1000;
+      std::cout << "=== END Controller Deactivation Request ===" << std::endl;
+    }
+
+    // Verify controller deactivation after countdown
+    if (deactivation_verify_countdown_ > 0) {
+      deactivation_verify_countdown_--;
+      if (deactivation_verify_countdown_ == 0 && !controllers_to_deactivate_.empty()) {
+        std::cout << "\n=== Verifying Controller Deactivation ===" << std::endl;
+        auto still_active = get_active_motion_controllers();
+
+        bool all_deactivated = true;
+        for (const auto& controller : controllers_to_deactivate_) {
+          if (std::find(still_active.begin(), still_active.end(), controller) != still_active.end()) {
+            std::cout << "  ✗ Controller '" << controller << "' is still ACTIVE" << std::endl;
+            RCLCPP_WARN(LOGGER, "Controller '%s' is still active after deactivation request", controller.c_str());
+            all_deactivated = false;
+          } else {
+            std::cout << "  ✓ Controller '" << controller << "' is INACTIVE" << std::endl;
+          }
+        }
+
+        if (all_deactivated) {
+          std::cout << "SUCCESS: All controllers successfully deactivated!" << std::endl;
+          RCLCPP_INFO(LOGGER, "Successfully verified all motion controllers are deactivated.");
+
+          // Switch to AUTO mode now that controllers are safely deactivated
+          change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+          last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+
+          // Now reactivate the controllers asynchronously
+          std::cout << "\n=== Reactivating Controllers ===" << std::endl;
+          RCLCPP_INFO(LOGGER, "Reactivating %zu controller(s)...", controllers_to_deactivate_.size());
+
+          std::thread([controllers = controllers_to_deactivate_]() {
+            try {
+              auto temp_node = std::make_shared<rclcpp::Node>("controller_activate_async");
+              auto temp_client = temp_node->create_client<controller_manager_msgs::srv::SwitchController>(
+                  "/controller_manager/switch_controller");
+
+              if (!temp_client->wait_for_service(std::chrono::milliseconds(500))) {
+                std::cout << "WARNING: Controller manager service not available for reactivation" << std::endl;
+                return;
+              }
+
+              auto request = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
+              request->activate_controllers = controllers;  // Reactivate these
+              request->deactivate_controllers = {};  // Not deactivating anything
+              request->strictness = controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
+              request->activate_asap = true;
+              request->timeout = rclcpp::Duration::from_seconds(10.0);
+
+              // Send request asynchronously
+              auto future = temp_client->async_send_request(request);
+              std::cout << "Controller reactivation request sent asynchronously" << std::endl;
+
+              // Spin to allow request to be sent
+              rclcpp::executors::SingleThreadedExecutor executor;
+              executor.add_node(temp_node);
+              executor.spin_some();
+
+            } catch (const std::exception& ex) {
+              std::cout << "Exception in async controller reactivation: " << ex.what() << std::endl;
+            }
+          }).detach();
+
+          std::cout << "Controller reactivation request fired. Controllers should be active shortly." << std::endl;
+
+        } else {
+          std::cout << "WARNING: Some controllers remain active" << std::endl;
+          RCLCPP_WARN(LOGGER, "Some motion controllers remain active after deactivation.");
+        }
+
+        // Clear the list after verification
+        controllers_to_deactivate_.clear();
+        std::cout << "=== END Verification ===" << std::endl;
+      }
     }
 
     // 4. Publish external tool wrench telemetry.
@@ -608,10 +755,23 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     base_mqtt_->ExecuteAction(action);
   }
   catch (const Kinova::Api::KDetailedException &e) {
-    RCLCPP_ERROR(LOGGER, "Fault during write(): %s", e.what());
-    RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service or use the teach pendant or restart the ROS2 launch file");
-    in_fault_ = true;
-    return hardware_interface::return_type::ERROR;
+    std::string error_msg = e.what();
+
+    // Check if error is INVALID_PARAM - this usually means robot is in fault state
+    // but read() hasn't detected it yet (race condition)
+    if (error_msg.find("INVALID_PARAM") != std::string::npos ||
+        error_msg.find("ROBOT_IN_FAULT") != std::string::npos) {
+      // Robot likely in fault state - set flag and let read() handle proper detection/logging
+      RCLCPP_DEBUG(LOGGER, "Command rejected (INVALID_PARAM) - robot likely in fault. Will be detected in read().");
+      in_fault_ = true;
+      return hardware_interface::return_type::OK;  // Return OK, not ERROR - this is expected
+    } else {
+      // Unexpected error - log as ERROR
+      RCLCPP_ERROR(LOGGER, "Unexpected fault during write(): %s", e.what());
+      RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
+      in_fault_ = true;
+      return hardware_interface::return_type::ERROR;
+    }
   }
 
   //Gripper command
@@ -773,15 +933,15 @@ bool Kortex3HardwareInterface::check_unsafe_controllers_active(std::string& erro
     "motion_control_handle"
   };
 
-  // Perform the service call in a separate thread to avoid executor conflicts
-  std::atomic<bool> call_completed{false};
-  std::shared_ptr<controller_manager_msgs::srv::ListControllers::Response> response;
-  std::string thread_error;
+// Perform the service call in a separate thread to avoid executor conflicts
+std::atomic<bool> call_completed{false};
+std::shared_ptr<controller_manager_msgs::srv::ListControllers::Response> response;
+std::string thread_error;
 
   std::thread service_thread([this, &call_completed, &response, &thread_error]() {
     try {
       // Create a separate node for this thread to avoid executor conflicts
-      auto temp_node = std::make_shared<rclcpp::Node>("controller_checker_temp");
+      auto temp_node = std::make_shared<rclcpp::Node>("active_motion_controllers_checker_temp");
       auto temp_client = temp_node->create_client<controller_manager_msgs::srv::ListControllers>(
           "/controller_manager/list_controllers");
 
@@ -860,6 +1020,92 @@ bool Kortex3HardwareInterface::check_unsafe_controllers_active(std::string& erro
   return false;  // Safe to execute program
 }
 
+std::vector<std::string> Kortex3HardwareInterface::get_active_motion_controllers()
+{
+  // List of motion controllers we care about
+  const std::vector<std::string> motion_controllers = {
+    "joint_velocity_controller",
+    "cartesian_motion_controller",
+    "motion_control_handle",
+    "joint_trajectory_controller"
+  };
+
+  std::vector<std::string> active_controllers;
+
+  // Perform the service call in a separate thread to avoid executor conflicts
+  std::atomic<bool> call_completed{false};
+  std::shared_ptr<controller_manager_msgs::srv::ListControllers::Response> response;
+  std::string thread_error;
+
+  std::thread service_thread([this, &call_completed, &response, &thread_error]() {
+    try {
+      // Create a separate node for this thread to avoid executor conflicts
+      auto temp_node = std::make_shared<rclcpp::Node>("active_motion_controllers_lister_temp");
+      auto temp_client = temp_node->create_client<controller_manager_msgs::srv::ListControllers>(
+          "/controller_manager/list_controllers");
+
+      // Wait for service to be available
+      if (!temp_client->wait_for_service(std::chrono::milliseconds(500))) {
+        thread_error = "Controller manager service not available";
+        std::cout << "Controller manager service not available" << std::endl;
+        call_completed = true;
+        return;
+      }
+
+      // Call the service
+      auto request = std::make_shared<controller_manager_msgs::srv::ListControllers::Request>();
+      auto future = temp_client->async_send_request(request);
+
+      // Spin until complete
+      rclcpp::executors::SingleThreadedExecutor executor;
+      executor.add_node(temp_node);
+
+      auto ret_code = executor.spin_until_future_complete(future, std::chrono::seconds(1));
+
+      if (ret_code == rclcpp::FutureReturnCode::SUCCESS) {
+        response = future.get();
+      } else {
+        thread_error = "Service call timed out";
+      }
+    } catch (const std::exception& ex) {
+      thread_error = std::string("Exception: ") + ex.what();
+    }
+    call_completed = true;
+  });
+
+  // Wait for the thread to complete with timeout
+  auto start_time = std::chrono::steady_clock::now();
+  while (!call_completed &&
+         (std::chrono::steady_clock::now() - start_time) < std::chrono::seconds(2)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  // Join the thread
+  if (service_thread.joinable()) {
+    service_thread.join();
+  }
+
+  // Check for errors
+  if (!call_completed || !response) {
+    RCLCPP_WARN(LOGGER, "Failed to get controller list: %s",
+                thread_error.empty() ? "timeout" : thread_error.c_str());
+    return active_controllers;  // Return empty list
+  }
+
+  // Check each controller in the response
+  for (const auto& controller : response->controller) {
+    // Check if this controller is in our motion controllers list and is active
+    if (std::find(motion_controllers.begin(), motion_controllers.end(), controller.name) != motion_controllers.end()) {
+      if (controller.state == "active") {
+        active_controllers.push_back(controller.name);
+        RCLCPP_DEBUG(LOGGER, "Found active motion controller: %s", controller.name.c_str());
+      }
+    }
+  }
+
+  return active_controllers;
+}
+
 void Kortex3HardwareInterface::handle_set_operating_mode(
   const std::shared_ptr<kortex3_hardware::srv::SetOperatingMode::Request> request,
   std::shared_ptr<kortex3_hardware::srv::SetOperatingMode::Response> response)
@@ -912,6 +1158,19 @@ void Kortex3HardwareInterface::handle_clear_faults(
   std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response)
 {
   RCLCPP_INFO(LOGGER, "Received ClearFaults request.");
+
+  // STEP 1: Get list of active controllers BEFORE clearing fault
+  std::cout << "\n=== Section 1: Get Active Controllers (before recovery) ===" << std::endl;
+  auto active_controllers = get_active_motion_controllers();
+  if (active_controllers.empty()) {
+    std::cout << "No active motion controllers found." << std::endl;
+  } else {
+    std::cout << "Found " << active_controllers.size() << " active motion controller(s):" << std::endl;
+    for (const auto& controller : active_controllers) {
+      std::cout << "  - " << controller << std::endl;
+    }
+  }
+
   try {
     auto armState = base_mqtt_->GetArmState();
     if (armState.active_state() == k_api::Common::ARMSTATE_IN_FAULT ||
@@ -919,27 +1178,129 @@ void Kortex3HardwareInterface::handle_clear_faults(
     {
       // 1. Clear the fault, which puts the arm into RECOVERY state.
       base_mqtt_->ClearFaults();
-      RCLCPP_INFO(LOGGER, "Called ClearFaults(), arm should be in RECOVERY.");
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-      // 2. Exit recovery state to return to OPERATIONAL.
-      base_mqtt_->ExitRecoveryState();
-      RCLCPP_INFO(LOGGER, "Called ExitRecoveryState(). Waiting for arm to become OPERATIONAL...");
+      // Re-fetch state after ClearFaults()
+      armState = base_mqtt_->GetArmState();
+      RCLCPP_INFO(LOGGER, "Called ClearFaults(). Arm state: %s",
+                  k_api::Common::ArmState_Name(armState.active_state()).c_str());
 
-      // 3. Wait for the arm to confirm it is operational.
-      const auto timeout = std::chrono::seconds(5);
-      auto start = std::chrono::steady_clock::now();
-      while (std::chrono::steady_clock::now() - start < timeout) {
-        if (base_mqtt_->GetArmState().active_state() == k_api::Common::ARMSTATE_ARM_OPERATIONAL) {
-          RCLCPP_INFO(LOGGER, "Arm recovered to OPERATIONAL.");
-          break;
+      // 2. Handle recovery based on arm state after ClearFaults()
+      if (armState.active_state() == k_api::Common::ARMSTATE_RECOVERY)
+      {
+        // Arm is in RECOVERY - requires manual hand-guiding
+        RCLCPP_WARN(LOGGER, "═══════════════════════════════════════════════════════════");
+        RCLCPP_WARN(LOGGER, "ROBOT IS NOW IN RECOVERY STATE");
+        RCLCPP_WARN(LOGGER, "If the fault was due to:");
+        RCLCPP_WARN(LOGGER, "  - Protection zone violation");
+        RCLCPP_WARN(LOGGER, "  - Proximity to position limits");
+        RCLCPP_WARN(LOGGER, "  - Singularity");
+        RCLCPP_WARN(LOGGER, "MANUAL ACTION REQUIRED:");
+        RCLCPP_WARN(LOGGER, "  1. Press the hand guiding button on the robot arm");
+        RCLCPP_WARN(LOGGER, "  2. Manually guide the robot to a safe position");
+        RCLCPP_WARN(LOGGER, "  3. Release the hand guiding button");
+        RCLCPP_WARN(LOGGER, "═══════════════════════════════════════════════════════════");
+
+        // Open /dev/tty directly to read from the controlling terminal
+        std::ifstream tty("/dev/tty");
+        if (tty.is_open())
+        {
+          std::cerr << "\nPress ENTER to proceed with recovery after hand-guiding..." << std::endl;
+          std::string dummy;
+          std::getline(tty, dummy);
+          tty.close();
+          RCLCPP_INFO(LOGGER, "User confirmed. Proceeding with recovery...");
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-      }
+        else
+        {
+          RCLCPP_ERROR(LOGGER, "Failed to open /dev/tty for user input. Proceeding automatically after 5 seconds...");
+          std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+        }
 
-      // 4. Reset internal fault flag to resume normal operation.
-      in_fault_ = false;
-      response->success = true;
-      response->message = "Faults cleared and arm recovered to OPERATIONAL.";
+        // 3. Exit recovery state to return to OPERATIONAL
+        base_mqtt_->ExitRecoveryState();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        RCLCPP_INFO(LOGGER, "Called ExitRecoveryState(). Waiting for arm to become OPERATIONAL...");
+
+        // 4. Wait for the arm to confirm it is operational
+        const auto timeout = std::chrono::seconds(10);
+        auto start = std::chrono::steady_clock::now();
+        bool became_operational = false;
+        while (std::chrono::steady_clock::now() - start < timeout) {
+          if (base_mqtt_->GetArmState().active_state() == k_api::Common::ARMSTATE_ARM_OPERATIONAL) {
+            RCLCPP_INFO(LOGGER, "Arm recovered to OPERATIONAL.");
+            became_operational = true;
+            break;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+
+        // 5. Report post recovery result
+        if (became_operational)
+        {
+          in_fault_ = false;
+          fault_recently_logged_ = false;
+
+          // Set robot back to AUTO mode
+          //RCLCPP_INFO(LOGGER, "Setting robot to AUTO mode...");
+          change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+          last_operating_mode_ = k_api::Common::OPERATING_MODE_MONITORED_STOP;
+
+          // STEP 2: Schedule controller deactivation to happen in read()
+          // We CANNOT call controller_manager from here due to executor deadlock
+          if (!active_controllers.empty()) {
+            std::cout << "\n=== Section 2: Schedule Controller Deactivation ===" << std::endl;
+            std::cout << "Scheduling deactivation of " << active_controllers.size() << " controller(s)..." << std::endl;
+
+            // Store the controllers to deactivate and set the flag
+            controllers_to_deactivate_ = active_controllers;
+            pending_controller_deactivation_ = true;
+
+            std::cout << "Controllers will be deactivated in the next read() cycle." << std::endl;
+            RCLCPP_INFO(LOGGER, "Scheduled deactivation of %zu motion controller(s).", active_controllers.size());
+            std::cout << "=== END Section 2 ===" << std::endl;
+          } else {
+            RCLCPP_INFO(LOGGER, "No motion controllers to deactivate.");
+          }
+
+          response->success = true;
+          response->message = "Faults cleared and arm recovered to OPERATIONAL.";
+        }
+        else
+        {
+          response->success = false;
+          response->message = "Recovery sequence timeout - arm did not reach OPERATIONAL state. "
+                             "Hand guiding may not have been performed properly. "
+                             "Current state: " + k_api::Common::ArmState_Name(base_mqtt_->GetArmState().active_state());
+          RCLCPP_ERROR(LOGGER, "Failed to exit recovery. Arm state: %s",
+                       k_api::Common::ArmState_Name(base_mqtt_->GetArmState().active_state()).c_str());
+        }
+      }
+      else if (armState.active_state() == k_api::Common::ARMSTATE_ARM_OPERATIONAL)
+      {
+        // Fault cleared and arm is already operational - no recovery needed
+        RCLCPP_INFO(LOGGER, "Fault cleared. Arm is already OPERATIONAL.");
+        in_fault_ = false;
+        fault_recently_logged_ = false;
+
+        // Set robot back to AUTO mode
+        RCLCPP_INFO(LOGGER, "Setting robot to AUTO mode...");
+        change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+        last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+
+        response->success = true;
+        response->message = "Faults cleared. Arm is OPERATIONAL.";
+      }
+      else
+      {
+        // Arm is in an unexpected state after clearing faults
+        RCLCPP_WARN(LOGGER, "Fault cleared but arm is in unexpected state: %s",
+                    k_api::Common::ArmState_Name(armState.active_state()).c_str());
+        in_fault_ = false;  // Reset fault flag anyway
+        fault_recently_logged_ = false;
+        response->success = true;
+        response->message = "Faults cleared. Arm state: " + k_api::Common::ArmState_Name(armState.active_state());
+      }
     }
     else {
       response->success = false;

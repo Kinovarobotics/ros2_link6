@@ -2,3 +2,8 @@ kortex_api-*.whl
 cartesian_controllers/
 ros2_robotiq_gripper/
 serial/
+
+# Ignore calibration files
+link6_description/config/link6.zip
+link6_description/config/calib.xml
+link6_description/config/calibration.yaml
