@@ -51,11 +51,11 @@
     - [7.3 Fault Handling](#73-fault-handling)
     - [7.4 Emergency Stop (Category 0) via ROS2](#74-emergency-stop-category-0-via-ros2)
     - [7.5 Interaction with the Webapp Programs via ROS2](#75-interaction-with-the-webapp-programs-via-ros2)
-  - [9. Visualization](#9-visualization)
-    - [9.1 RViz Setup](#91-rviz-setup)
-    - [9.2 Interactive Marker Control](#92-interactive-marker-control)
-    - [9.3 Force/Torque Zeroing](#93-forcetorque-zeroing)
-  - [10. Package Overview](#10-package-overview)
+  - [8. Visualization](#9-visualization)
+    - [8.1 RViz Setup](#91-rviz-setup)
+    - [8.2 Interactive Marker Control](#92-interactive-marker-control)
+    - [8.3 Force/Torque Zeroing](#93-forcetorque-zeroing)
+  - [9. Package Overview](#10-package-overview)
     - [link6\_description](#link6_description)
     - [link6\_driver](#link6_driver)
     - [link6\_control](#link6_control)
@@ -268,6 +268,8 @@ ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 ca
 
 #### 6.1.1 Real Hardware
 
+First, deactivate the robotiq_plugin on the link6 controller using the webapp/teach pendant if you plan on controlling the mounted robotiq gripper using ROS2
+
 To bringup a real life Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
@@ -396,7 +398,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 1.0 (Fully Closed), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
@@ -580,7 +582,7 @@ success: true
 message: "Faults cleared and arm recovered to OPERATIONAL."
 ```
 
-Note: Some errors might require the user to login into the web app to manual jog the robot out of it.
+Note: In most cases, errors require the user to hand guide the robot out of the recovery state. Therefore, please make sure to follow the terminal instructions where the launch file was started.
 
 ### 7.4 Emergency Stop (Category 0) via ROS2
 
@@ -885,5 +887,5 @@ This package implements the ROS2 Control configurations that are used by the Kor
 
 ## Authors
 
-- Anas Houssaini — Hardware Interface, initial development and ROS2 integration  
-- Abed Al Rahman Al Mrad - Robotiq gripper integration
+- Anas Houssaini — Initial development and ROS2 integration  
+- Abed Al Rahman Al Mrad - Robotiq gripper integration. Hardware interface optimization and extra features addition
