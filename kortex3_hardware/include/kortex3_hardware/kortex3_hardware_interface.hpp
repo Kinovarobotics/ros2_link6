@@ -121,6 +121,11 @@ public:
   const std::vector<double>& get_joint_velocities() const { return joint_velocities_; }
   /** @brief Gets the current joint torques. For debugging. */
   const std::vector<double>& get_joint_torques() const { return joint_torques_; }
+  // --- Calibration Methods ---
+  /** @brief Dumps calibration data from the robot to file. */
+  bool dump_calibration(const std::string& serial);
+  /** @brief Calibrates the robot. */
+  bool calibrate_robot();
 
 private:
   std::mutex gripper_mtx_;
@@ -128,8 +133,6 @@ private:
   void check_and_power_on_robot();
   void send_zero_velocities();
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
-  bool dump_calibration(const std::string& serial);                                                                                                                                                     
-  bool calibrate_robot(); 
   // Controller management helpers for fault recovery
   std::vector<std::string> get_active_motion_controllers();
   // --- ROS Service Handlers ---
