@@ -128,7 +128,8 @@ private:
   void check_and_power_on_robot();
   void send_zero_velocities();
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
-
+  bool dump_calibration(const std::string& serial);                                                                                                                                                     
+  bool calibrate_robot(); 
   // Controller management helpers for fault recovery
   std::vector<std::string> get_active_motion_controllers();
   // --- ROS Service Handlers ---
