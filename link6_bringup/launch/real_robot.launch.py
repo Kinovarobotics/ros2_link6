@@ -19,7 +19,8 @@ def launch_setup(context, *args, **kwargs):
     gripper = LaunchConfiguration("gripper")
     gripper_joint_name = LaunchConfiguration("gripper_joint_name")
     use_internal_bus_gripper_comm = LaunchConfiguration("use_internal_bus_gripper_comm")
-
+    calibration_file = LaunchConfiguration("calibration_file")
+    
     robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -28,7 +29,7 @@ def launch_setup(context, *args, **kwargs):
                 [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
             ),
             " ",
-            "gripper:=", 
+            "gripper:=",
             gripper,
             " ",
             "gripper_joint_name:=",
@@ -36,6 +37,9 @@ def launch_setup(context, *args, **kwargs):
             " ",
             "use_internal_bus_gripper_comm:=",
             use_internal_bus_gripper_comm,
+            " ",
+            "calibration_file:=",
+            calibration_file,
             " ",
         ]
     )
@@ -172,6 +176,15 @@ def generate_launch_description():
             "use_internal_bus_gripper_comm",
             default_value="true",
             description="Use internal bus for gripper communication?",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "calibration_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("link6_description"), "config", "default_calibration.yaml"]
+            ),
+            description="Path to robot-specific calibration YAML file (default: default_calibration.yaml)",
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

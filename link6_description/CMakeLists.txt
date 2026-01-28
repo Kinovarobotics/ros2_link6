@@ -20,14 +20,10 @@ install(
         DESTINATION share/${PROJECT_NAME}
 )
 
-install(
-        PROGRAMS  scripts/calibrated_urdf_generator.py
-        DESTINATION share/${PROJECT_NAME}/scripts
-)
-
 # Install the test script
 install(
-        PROGRAMS scripts/test_calibration.sh
+        PROGRAMS
+                scripts/test_dynamic_calibration.sh
         DESTINATION share/${PROJECT_NAME}/scripts
 )
 
