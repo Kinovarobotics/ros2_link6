@@ -177,6 +177,7 @@ git lfs pull
 
 ```bash
 cd $COLCON_WS
+shopt -s dotglob
 mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
 ```
 
@@ -291,12 +292,12 @@ ros2 launch link6_bringup real_robot.launch.py calibration_file:=/path/to/your_r
 
 #### 6.1.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share:$(ros2 pkg prefix robotiq_description)/share
 ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 To bringup the simulated arm without any mounted gripper, use the following:
@@ -481,12 +482,12 @@ ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
 
 #### 6.4.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To use MoveIt with a simulated Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 
 Then activate the joint_trajectory_controller (refer to section 6.2.1)
@@ -611,7 +612,7 @@ success: true
 message: "Found 3 program(s)."
 programs:
   - identifier: 1
-    name: "PickAndPlace"
+    name: "<program_name>"
   - identifier: 2
     name: "HomePosition"
   - identifier: 3
@@ -726,9 +727,9 @@ ros2 service call /controller_manager/switch_controller controller_manager_msgs/
 }"
 
 
-# 3. Run the desired program (e.g., 'PickAndPlace')
+# 3. Run the desired program (e.g., '<program_name>')
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 
 # 4. Monitor the program status
 ros2 service call /kortex3_hardware/get_program_status \

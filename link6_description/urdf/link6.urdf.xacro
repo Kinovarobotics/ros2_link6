@@ -19,7 +19,7 @@
     <xacro:arg name="sim_gazebo" default="false" />
     <xacro:arg name="prefix" default="" />
     <xacro:arg name="use_fake_hardware" default="false" />
-    <xacro:arg name="fake_sensor_commands" default="false" />
+    <xacro:arg name="mock_sensor_commands" default="false" />
     <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
     <xacro:arg name="use_external_cable" default="false" />
     <!-- Initial position for simulations (Mock Hardware, Gazebo) -->
@@ -45,7 +45,7 @@
         gripper_modbus_id="$(arg gripper_modbus_id)"
         gripper_b_modbus_id="$(arg gripper_b_modbus_id)"
         use_fake_hardware="$(arg use_fake_hardware)"
-        fake_sensor_commands="$(arg fake_sensor_commands)"
+        mock_sensor_commands="$(arg mock_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
         initial_positions_file="$(arg initial_positions_file)"
         calibration_file="$(arg calibration_file)">

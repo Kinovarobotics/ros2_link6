@@ -69,7 +69,10 @@ int main(int argc, char** argv)
     hw_info.hardware_parameters["mqtt_port"] = "1883";
     hw_info.hardware_parameters["udp_feedback_port"] = "10001";
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4c628d0 (post-testing modifications)
     // Define arm joints
     for (int i = 1; i <= 6; i++)
     {
@@ -89,7 +92,7 @@ int main(int argc, char** argv)
       joint.state_interfaces.push_back(eff_iface);
       hw_info.joints.push_back(joint);
     }
-  
+    
     // Add gripper joint (7th joint) - matches URDF configuration
     {
       hardware_interface::ComponentInfo gripper_joint;
