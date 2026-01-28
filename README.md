@@ -361,7 +361,7 @@ ros2 control switch_controllers \
 2. **Send target pose**:
 
 ```bash
-ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
+ros2 topic pub --once /cartesian_motion_controller/target_frame geometry_msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
 ```
 
 #### 6.2.4 Joint Velocity Controller
@@ -373,7 +373,7 @@ ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/ms
 2. Publish velocities:
 
    ```bash
-   ros2 topic pub /joint_velocity_controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
+   ros2 topic pub /joint_velocity_controller/commands std_msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
    ```
    
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
@@ -456,51 +456,6 @@ Force (N)   : X=   1.877 Y=  -0.572 Z=  -3.509
 Torque (Nm) : X=   0.018 Y=   0.028 Z=  -0.025
 ```
 
-#### 6.3.2 Velocity Control Test
-
-**Run the test:**
-
-```bash
-ros2 run kortex3_hardware test_send_velocity
-```
-
-Interactive Menu:
-
-```
-5. Select velocity test mode:
-   0: Zero velocities (stop all joints)
-   1: Small sine wave (3 deg/s amplitude, 0.5 Hz)
-   2: Constant velocity on joint 1 (5 deg/s)
-   3: Custom velocities (you specify)
-   4: Constant velocity on last joint (5 deg/s)
-   5: Strong sine wave (20 deg/s, 0.5 Hz)
-
-Enter mode (0-5): 
-```
-
-**Output (Mode 1):**
-
-```
-=== Kortex3 Velocity Control Test ===
-Mode: Sine wave (3 deg/s, 0.5 Hz)
-Time: 7.4s
-
-Joint States:
-----------------------------------------------------------------------------
-Joint | Pos [deg] | Vel [deg/s] | Torque [Nm] | Cmd Vel [deg/s]
-------|-----------|-------------|-------------|----------------
-  1   |     22.34 |      -3.049 |      -6.103 |          -2.915
-  2   |     52.69 |      -2.847 |     -24.098 |          -2.915
-  3   |    116.64 |      -2.831 |     -24.612 |          -2.915
-  4   |      7.41 |      -2.909 |      -6.044 |          -2.915
-  5   |    -15.51 |      -3.281 |       2.721 |          -2.915
-  6   |      4.07 |      -2.801 |      -0.796 |          -2.915
-
-Press Ctrl+C to stop...
-```
-
----
-
 ### 6.4 MoveIt
 
 #### 6.4.1 Real Hardware
@@ -508,8 +463,11 @@ Press Ctrl+C to stop...
 To use MoveIt with a real life Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
+
+Then activate the joint_trajectory_controller (refer to section 6.2.1)
+
 Then start MoveIt:
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
@@ -524,6 +482,9 @@ To use MoveIt with a simulated Link6, first bringup the robot:
 ```bash
 ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
 ```
+
+Then activate the joint_trajectory_controller (refer to section 6.2.1)
+
 Then start MoveIt:
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_sim_time:=true use_rviz:=true
@@ -609,6 +570,7 @@ ros2 service call /kortex3_hardware/simulate_estop \
 After triggering the fault, recover using the teach pendant to:
 - Clear the faults
 - Turn on the arm
+- Restart the ROS2 launch file
 
 #### Safety Notes
 
@@ -658,7 +620,7 @@ To execute a program by its name (obtained from the list above):
 
 ```bash
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 ```
 
 **Parameters:**
@@ -668,7 +630,7 @@ ros2 service call /kortex3_hardware/run_program \
 
 ```yaml
 success: true
-message: "Program 'PickAndPlace' (ID: 1) started successfully."
+message: "Program '<program_name>' (ID: 1) started successfully."
 ```
 
 **Example Error Response (if program not found):**
@@ -831,8 +793,7 @@ ros2 run rviz2 rviz2 \
 The robot launches with the cartesian\_motion\_controller active, but the interactive marker handle is off by default. To control the robot by dragging a marker in RViz, you must activate the motion\_control\_handle.
 
 ```bash
-ros2 control switch_controllers \
-  --activate motion_control_handle
+ros2 control switch_controllers --activate motion_control_handle
 ```
 
 If the interactive marker is not on the side menu of rviz, then you can add it by clicking on Add button and in the by topic tab, select /tool\_wrench/Wrench.
