@@ -12,7 +12,7 @@
     username:=admin
     password:=admin
     use_fake_hardware:=false
-    fake_sensor_commands:=false
+    mock_sensor_commands:=false
     sim_gazebo:=false
     gripper_com_port:=/dev/ttyUSB0
     moveit_active:=false
@@ -59,7 +59,7 @@
     <xacro:link6_ros2_control
       prefix="${prefix}"
       use_fake_hardware="${use_fake_hardware}"
-      fake_sensor_commands="${fake_sensor_commands}"
+      mock_sensor_commands="${mock_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
       initial_positions="${initial_positions}"
       robot_ip="${robot_ip}"
@@ -479,10 +479,10 @@
           parent="${prefix}end_effector_link"
           prefix="${prefix}"
           use_fake_hardware="${use_fake_hardware}"
-          fake_sensor_commands="${fake_sensor_commands}"
+          mock_sensor_commands="${mock_sensor_commands}"
           include_ros2_control="${sim_gazebo}"
           com_port="${gripper_com_port}"
-          sim_ignition="${sim_gazebo}">
+          sim_gazebo="${sim_gazebo}">
           <origin xyz="0 0 0" rpy="0 0 0" />
         </xacro:robotiq_gripper>
     </xacro:unless>

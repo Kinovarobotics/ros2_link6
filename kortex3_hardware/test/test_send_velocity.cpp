@@ -69,7 +69,7 @@ int main(int argc, char** argv)
     hw_info.hardware_parameters["mqtt_port"] = "1883";
     hw_info.hardware_parameters["udp_feedback_port"] = "10001";
 
-
+    // Define arm joints
     for (int i = 1; i <= 6; i++)
     {
       hardware_interface::ComponentInfo joint;
@@ -87,6 +87,28 @@ int main(int argc, char** argv)
       eff_iface.name = hardware_interface::HW_IF_EFFORT;
       joint.state_interfaces.push_back(eff_iface);
       hw_info.joints.push_back(joint);
+    }
+    
+    // Add gripper joint (7th joint) - matches URDF configuration
+    {
+      hardware_interface::ComponentInfo gripper_joint;
+      gripper_joint.name = "robotiq_85_left_knuckle_joint";
+
+      // Command interface (position for gripper)
+      hardware_interface::InterfaceInfo cmd_iface;
+      cmd_iface.name = hardware_interface::HW_IF_POSITION;
+      gripper_joint.command_interfaces.push_back(cmd_iface);
+
+      // State interfaces (position and velocity)
+      hardware_interface::InterfaceInfo pos_iface;
+      pos_iface.name = hardware_interface::HW_IF_POSITION;
+      gripper_joint.state_interfaces.push_back(pos_iface);
+
+      hardware_interface::InterfaceInfo vel_iface;
+      vel_iface.name = hardware_interface::HW_IF_VELOCITY;
+      gripper_joint.state_interfaces.push_back(vel_iface);
+
+      hw_info.joints.push_back(gripper_joint);
     }
 
 

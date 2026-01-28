@@ -75,7 +75,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   {
     RCLCPP_ERROR(LOGGER,
       "URDF configuration error: Expected %zu joints, but got %zu.",
-      actuator_count_, info_.joints.size());
+      actuator_count_+1, info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -760,9 +760,10 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     // Check if error is INVALID_PARAM - this usually means robot is in fault state
     // but read() hasn't detected it yet (race condition)
     if (error_msg.find("INVALID_PARAM") != std::string::npos ||
-        error_msg.find("ROBOT_IN_FAULT") != std::string::npos) {
+        error_msg.find("ROBOT_IN_FAULT") != std::string::npos ||
+        error_msg.find("WRONG_MODE") != std::string::npos) {
       // Robot likely in fault state - set flag and let read() handle proper detection/logging
-      RCLCPP_DEBUG(LOGGER, "Command rejected (INVALID_PARAM) - robot likely in fault. Will be detected in read().");
+      RCLCPP_DEBUG(LOGGER, "Command rejected - robot likely in fault. Will be detected in read().");
       in_fault_ = true;
       return hardware_interface::return_type::OK;  // Return OK, not ERROR - this is expected
     } else {
