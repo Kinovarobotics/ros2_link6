@@ -5,41 +5,36 @@ from launch_ros.actions import Node
 from launch.actions import (
     DeclareLaunchArgument,
     OpaqueFunction,
-    RegisterEventHandler,
 )
-from launch.event_handlers import OnProcessExit
-from launch.conditions import IfCondition
 from launch.substitutions import (
     Command,
     FindExecutable,
     LaunchConfiguration,
     PathJoinSubstitution,
-    PythonExpression,
 )
 from launch_ros.substitutions import FindPackageShare
 
 def launch_setup(context, *args, **kwargs):
-    #Initialize Arguments
+    # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
-    robot_description_content = Command(
+    calibration_file = LaunchConfiguration("calibration_file")
+    robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution(
-                [FindPackageShare("link6_description"), "urdf", "link6.xacro"]
+                [FindPackageShare("link6_description"), "urdf", "link6.urdf.xacro"]
             ),
             " ",
-            "gripper:=", 
+            "gripper:=",
             gripper,
             " ",
-
-
+            "calibration_file:=",
+            calibration_file,
+            " ",
         ]
     )
-
-
-    robot_description = {'robot_description': robot_description_content}
-
+    robot_description = {'robot_description': robot_description}
 
     controller_config = os.path.join(
         get_package_share_directory('link6_control'), 
@@ -54,7 +49,6 @@ def launch_setup(context, *args, **kwargs):
         parameters=[robot_description],
     )
 
-
     tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -62,8 +56,6 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
         arguments=['0','0','0','0','0','0','world','base_link'],
     )
-
-
 
     controller_manager = Node(
         package="controller_manager",
@@ -76,7 +68,6 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -88,6 +79,17 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
+    joint_trajectory_controller = Node(
+        package    = "controller_manager",
+        executable = "spawner",
+        arguments  = [
+            "joint_trajectory_controller",
+            "--inactive",
+            "--param-file", controller_config,
+            "--controller-manager", "/controller_manager"
+        ],
+        output     = "screen",
+    )
 
     joint_velocity_controller_spawner = Node(
         package="controller_manager",
@@ -135,6 +137,7 @@ def launch_setup(context, *args, **kwargs):
         joint_state_broadcaster_spawner,
         cartesian_motion_controller_spawner,
         motion_control_handle_spawner,
+        joint_trajectory_controller,
         joint_velocity_controller_spawner,
         topic_relay,
     ]
@@ -148,7 +151,16 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "gripper",
             default_value="",
-            description="Name of the gripper attached to the arm",
+            description="Name of the gripper attached to the arm (empty for no gripper)",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "calibration_file",
+            default_value=PathJoinSubstitution(
+                [FindPackageShare("link6_description"), "config", "default_calibration.yaml"]
+            ),
+            description="Path to robot-specific calibration YAML file (default: default_calibration.yaml)",
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

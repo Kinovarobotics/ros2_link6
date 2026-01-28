@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="link6">
+
+    <!-- Import link6 urdf file -->
+    <xacro:include filename="$(find link6_description)/urdf/link6.urdf.xacro" />
+
+</robot>

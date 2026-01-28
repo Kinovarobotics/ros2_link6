@@ -2,7 +2,6 @@ controller_manager:
   ros__parameters:
     update_rate: 100 # Hz
 
-
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
@@ -17,6 +16,9 @@ controller_manager:
 
     robotiq_gripper_controller:
       type: position_controllers/GripperActionController
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
 
 
 joint_state_broadcaster:
@@ -35,10 +37,8 @@ joint_velocity_controller:
       - joint_5
       - joint_6
 
-
     command_interfaces:
       - velocity
-
 
     state_interfaces:
       - position
@@ -89,3 +89,74 @@ robotiq_gripper_controller:
     default: true
     joint: robotiq_85_left_knuckle_joint
     allow_stalling: true
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+
+    command_interfaces:
+      - velocity
+
+    state_interfaces:
+      - position
+      - velocity
+
+    constraints:
+      stopped_velocity_tolerance: 0.01
+      goal_time: 0.0
+      joint_1:
+        goal: 0.001
+      joint_2:
+        goal: 0.001
+      joint_3:
+        goal: 0.001
+      joint_4:
+        goal: 0.001
+      joint_5:
+        goal: 0.001
+      joint_6:
+        goal: 0.001
+        
+    gains:
+      joint_1:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
+      joint_2:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
+      joint_3:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
+      joint_4:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
+      joint_5:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
+      joint_6:
+        p: 3.0
+        i: 0.0
+        i_clamp: 0.0
+        d: 0.3
+        ff_velocity_scale: 0.0
