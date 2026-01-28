@@ -62,6 +62,7 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include "controller_manager_msgs/srv/list_controllers.hpp"
+#include "controller_manager_msgs/srv/switch_controller.hpp"
 
 // Robotiq gripper plugin headers
 #include "robotiq_gripper/Grippers/FingerGripper.h"
