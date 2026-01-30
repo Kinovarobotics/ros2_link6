@@ -18,6 +18,9 @@ def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
     calibration_file = LaunchConfiguration("calibration_file")
+    robot_ip = LaunchConfiguration("robot_ip")
+    username = LaunchConfiguration("username")
+    password = LaunchConfiguration("password")
     robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -31,6 +34,15 @@ def launch_setup(context, *args, **kwargs):
             " ",
             "calibration_file:=",
             calibration_file,
+            " ",
+            "robot_ip:=",
+            robot_ip,
+            " ",
+            "username:=",
+            username,
+            " ",
+            "password:=",
+            password,
             " ",
         ]
     )
@@ -161,6 +173,27 @@ def generate_launch_description():
                 [FindPackageShare("link6_description"), "config", "default_calibration.yaml"]
             ),
             description="Path to robot-specific calibration YAML file (default: default_calibration.yaml)",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "robot_ip",
+            default_value="192.168.1.10",
+            description="IP address of the robotic arm",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "username",
+            default_value="admin",
+            description="username to start a session to interact with the robot",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "password",
+            default_value="admin",
+            description="password to start a session to interact with the robot",
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])
