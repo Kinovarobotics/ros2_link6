@@ -5,7 +5,7 @@ repositories:
     version: ros2
   ros2_robotiq_gripper:
     type: git
-    url: https://github.com/aalmrad/ros2_robotiq_gripper.git
+    url: https://github.com/PickNikRobotics/ros2_robotiq_gripper.git
     version: main
   serial:
     type: git

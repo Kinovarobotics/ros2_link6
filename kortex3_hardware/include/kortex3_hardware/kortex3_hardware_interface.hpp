@@ -62,6 +62,7 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include "controller_manager_msgs/srv/list_controllers.hpp"
+#include "controller_manager_msgs/srv/switch_controller.hpp"
 
 // Robotiq gripper plugin headers
 #include "robotiq_gripper/Grippers/FingerGripper.h"
@@ -121,6 +122,12 @@ public:
   const std::vector<double>& get_joint_velocities() const { return joint_velocities_; }
   /** @brief Gets the current joint torques. For debugging. */
   const std::vector<double>& get_joint_torques() const { return joint_torques_; }
+
+  // --- Calibration Methods ---
+  /** @brief Dumps calibration data from the robot to file. */
+  bool dump_calibration(const std::string& serial);
+  /** @brief Calibrates the robot. */
+  bool calibrate_robot();
 
 private:
   std::mutex gripper_mtx_;
