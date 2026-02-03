@@ -77,13 +77,13 @@
 
 #### 4.1.1 Install Dependencies
 
-1. **ROS2 Humble** on Ubuntu 22.04  
+1. **ROS2 Jazzy** on Ubuntu 24.04  
    Follow the official guide:  
-   https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
+   https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
 
-2. **Ignition Fortress (Gazebo)**  
+2. **Ignition Harmonic (Gazebo)**  
    See “ROS2 Integration” section here:  
-   https://gazebosim.org/docs/fortress/ros_installation/
+   https://gazebosim.org/docs/harmonic/ros_installation/
 
 3. Install wget:
   ```bash
@@ -169,6 +169,7 @@ git lfs pull
 
 ```bash
 cd $COLCON_WS
+shopt -s dotglob
 mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
 ```
 
@@ -182,7 +183,7 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
-    ├── ros2_kortex3.humble.repos
+    ├── ros2_kortex3.jazzy.repos
     ├── LICENSE
     └── README.md
 ```
@@ -211,9 +212,9 @@ sudo apt update
 sudo apt install \
   python3-rosdep \
   python3-colcon-clean \
-  ros-humble-gz-ros2-control \
-  ros-humble-gz-ros2-control-demos \
-  ros-humble-gripper-controllers
+  ros-jazzy-gz-ros2-control \
+  ros-jazzy-gz-ros2-control-demos \
+  ros-jazzy-gripper-controllers
 
 ```
 
@@ -285,12 +286,12 @@ ros2 launch link6_bringup real_robot.launch.py calibration_file:=/path/to/your_r
 
 #### 6.1.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share:$(ros2 pkg prefix robotiq_description)/share
 ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 To bringup the simulated arm without any mounted gripper, use the following:
@@ -361,7 +362,7 @@ ros2 control switch_controllers \
 2. **Send target pose**:
 
 ```bash
-ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
+ros2 topic pub --once /cartesian_motion_controller/target_frame geometry_msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
 ```
 
 #### 6.2.4 Joint Velocity Controller
@@ -373,7 +374,7 @@ ros2 topic pub --once /cartesian_motion_controller/target_frame geometry/msgs/ms
 2. Publish velocities:
 
    ```bash
-   ros2 topic pub /joint_velocity_controller/commands std/msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
+   ros2 topic pub /joint_velocity_controller/commands std_msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
    ```
    
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
@@ -456,51 +457,6 @@ Force (N)   : X=   1.877 Y=  -0.572 Z=  -3.509
 Torque (Nm) : X=   0.018 Y=   0.028 Z=  -0.025
 ```
 
-#### 6.3.2 Velocity Control Test
-
-**Run the test:**
-
-```bash
-ros2 run kortex3_hardware test_send_velocity
-```
-
-Interactive Menu:
-
-```
-5. Select velocity test mode:
-   0: Zero velocities (stop all joints)
-   1: Small sine wave (3 deg/s amplitude, 0.5 Hz)
-   2: Constant velocity on joint 1 (5 deg/s)
-   3: Custom velocities (you specify)
-   4: Constant velocity on last joint (5 deg/s)
-   5: Strong sine wave (20 deg/s, 0.5 Hz)
-
-Enter mode (0-5): 
-```
-
-**Output (Mode 1):**
-
-```
-=== Kortex3 Velocity Control Test ===
-Mode: Sine wave (3 deg/s, 0.5 Hz)
-Time: 7.4s
-
-Joint States:
-----------------------------------------------------------------------------
-Joint | Pos [deg] | Vel [deg/s] | Torque [Nm] | Cmd Vel [deg/s]
-------|-----------|-------------|-------------|----------------
-  1   |     22.34 |      -3.049 |      -6.103 |          -2.915
-  2   |     52.69 |      -2.847 |     -24.098 |          -2.915
-  3   |    116.64 |      -2.831 |     -24.612 |          -2.915
-  4   |      7.41 |      -2.909 |      -6.044 |          -2.915
-  5   |    -15.51 |      -3.281 |       2.721 |          -2.915
-  6   |      4.07 |      -2.801 |      -0.796 |          -2.915
-
-Press Ctrl+C to stop...
-```
-
----
-
 ### 6.4 MoveIt
 
 #### 6.4.1 Real Hardware
@@ -508,7 +464,7 @@ Press Ctrl+C to stop...
 To use MoveIt with a real life Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 Then start MoveIt:
 ```bash
@@ -517,12 +473,12 @@ ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
 
 #### 6.4.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To use MoveIt with a simulated Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 Then start MoveIt:
 ```bash
@@ -643,7 +599,7 @@ success: true
 message: "Found 3 program(s)."
 programs:
   - identifier: 1
-    name: "PickAndPlace"
+    name: "<program_name>"
   - identifier: 2
     name: "HomePosition"
   - identifier: 3
@@ -658,7 +614,7 @@ To execute a program by its name (obtained from the list above):
 
 ```bash
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 ```
 
 **Parameters:**
@@ -668,7 +624,7 @@ ros2 service call /kortex3_hardware/run_program \
 
 ```yaml
 success: true
-message: "Program 'PickAndPlace' (ID: 1) started successfully."
+message: "Program '<program_name>' (ID: 1) started successfully."
 ```
 
 **Example Error Response (if program not found):**
@@ -758,9 +714,9 @@ ros2 service call /controller_manager/switch_controller controller_manager_msgs/
 }"
 
 
-# 3. Run the desired program (e.g., 'PickAndPlace')
+# 3. Run the desired program (e.g., '<program_name>')
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 
 # 4. Monitor the program status
 ros2 service call /kortex3_hardware/get_program_status \

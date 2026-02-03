@@ -112,7 +112,8 @@ def launch_setup(context, *args, **kwargs):
         arguments  = [
             "joint_trajectory_controller",
             "--param-file", robot_controllers,
-            "--controller-manager", "/controller_manager"
+            "--controller-manager", "/controller_manager",
+            "--inactive"
         ],
         output     = "screen",
     )
@@ -124,8 +125,7 @@ def launch_setup(context, *args, **kwargs):
         arguments=[
             "cartesian_motion_controller", 
             "--controller-manager", 
-            "/controller_manager",
-            "--inactive"],
+            "/controller_manager"],
         output     = "screen",
     )
 
