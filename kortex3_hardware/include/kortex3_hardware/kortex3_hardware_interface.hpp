@@ -128,12 +128,6 @@ public:
   /** @brief Calibrates the robot. */
   bool calibrate_robot();
 
-  // --- Calibration Methods ---
-  /** @brief Dumps calibration data from the robot to file. */
-  bool dump_calibration(const std::string& serial);
-  /** @brief Calibrates the robot. */
-  bool calibrate_robot();
-
 private:
   std::mutex gripper_mtx_;
   // --- Private Helper Methods ---
