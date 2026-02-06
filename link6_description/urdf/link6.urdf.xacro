@@ -74,7 +74,7 @@
             parent="$(arg prefix)end_effector_link"
             sim_gazebo="$(arg sim_gazebo)"
             use_fake_hardware="$(arg use_fake_hardware)"
-            fake_sensor_commands="$(arg fake_sensor_commands)"
+            mock_sensor_commands="$(arg mock_sensor_commands)"
             use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)">
         </xacro:load_gripper>
     </xacro:unless>
