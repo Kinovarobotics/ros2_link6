@@ -183,17 +183,6 @@ public:
   const std::vector<double>& get_joint_velocities() const { return joint_velocities_; }
   /** @brief Gets the current joint torques. For debugging. */
   const std::vector<double>& get_joint_torques() const { return joint_torques_; }
-  // --- Calibration Methods ---
-  /** @brief Dumps calibration data from the robot to file. */
-  bool dump_calibration(const std::string& serial);
-  /** @brief Calibrates the robot. */
-  bool calibrate_robot();
-
-  // --- Calibration Methods ---
-  /** @brief Dumps calibration data from the robot to file. */
-  bool dump_calibration(const std::string& serial);
-  /** @brief Calibrates the robot. */
-  bool calibrate_robot();
 
 private:
   // --- Private Helper Methods ---
