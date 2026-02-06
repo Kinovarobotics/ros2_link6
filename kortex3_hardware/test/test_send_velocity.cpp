@@ -69,10 +69,6 @@ int main(int argc, char** argv)
     hw_info.hardware_parameters["mqtt_port"] = "1883";
     hw_info.hardware_parameters["udp_feedback_port"] = "10001";
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 4c628d0 (post-testing modifications)
     // Define arm joints
     for (int i = 1; i <= 6; i++)
     {
