@@ -28,7 +28,7 @@
         isaac_joint_commands="${isaac_joint_commands}"
         isaac_joint_states="${isaac_joint_states}"
         use_fake_hardware="${use_fake_hardware}"
-        fake_sensor_commands="${fake_sensor_commands}"
+        mock_sensor_commands="${fake_sensor_commands}"
         include_ros2_control="${sim_gazebo}"
         com_port="${com_port}">
         <origin xyz="0 0 0" rpy="0 0 0" />
