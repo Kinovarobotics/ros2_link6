@@ -289,8 +289,11 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   // Verify that the URDF's joint count matches the expected count.
   // Count configured grippers
   int gripper_joint_count = 0;
-  if (!gripper_a_.joint_name_.empty()) gripper_joint_count++;
-  if (!gripper_b_.joint_name_.empty()) gripper_joint_count++;
+  if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
+  {
+    if (!gripper_a_.joint_name_.empty()) gripper_joint_count++;
+    if (!gripper_b_.joint_name_.empty()) gripper_joint_count++;
+  }
 
   int expected_joints_number = actuator_count_ + gripper_joint_count;
   if (info_.joints.size() != expected_joints_number)

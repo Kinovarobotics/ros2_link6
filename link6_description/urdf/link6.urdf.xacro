@@ -9,7 +9,7 @@
     <xacro:arg name="port_realtime" default="10001" />
     <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
-    <xacro:arg name="gripper" default="$(arg gripper)" />
+    <xacro:arg name="gripper" default="" />
     <xacro:arg name="gripper_joint_name" default="" />
     <xacro:arg name="gripper_b_joint_name" default="" />
     <xacro:arg name="gripper_modbus_id" default="9" />
@@ -52,8 +52,11 @@
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
     </xacro:link6>
 
+    <!-- Conditionally include gripper -->
+    <xacro:property name="gripper" value="$(arg gripper)"/>
+
     <!-- If no gripper, define tool frame here -->
-    <xacro:if value="${gripper == ''}">
+    <xacro:if value="${not gripper}">
         <link name="$(arg prefix)tool_frame" />
         <joint name="$(arg prefix)tool_frame_joint" type="fixed">
             <origin xyz="0 0 0" rpy="0 0 0" />
@@ -64,7 +67,7 @@
     </xacro:if>
 
     <!-- Include and load the gripper if defined -->
-    <xacro:if value="${gripper != ''}">
+    <xacro:unless value="${not gripper}">
         <xacro:include filename="$(find link6_description)/urdf/grippers/$(arg gripper)_macro.xacro" />
         <xacro:load_gripper
             prefix="$(arg prefix)"
@@ -74,7 +77,7 @@
             fake_sensor_commands="$(arg fake_sensor_commands)"
             use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)">
         </xacro:load_gripper>
-    </xacro:if>
+    </xacro:unless>
 
 
     <xacro:if value="$(arg sim_gazebo)">
