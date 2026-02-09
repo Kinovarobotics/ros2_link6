@@ -10,7 +10,10 @@
     <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
     <xacro:arg name="gripper" default="" />
-    <xacro:arg name="gripper_joint_name" default="finger_joint" />
+    <xacro:arg name="gripper_joint_name" default="" />
+    <xacro:arg name="gripper_b_joint_name" default="" />
+    <xacro:arg name="gripper_modbus_id" default="9" />
+    <xacro:arg name="gripper_b_modbus_id" default="10" />
     <xacro:arg name="gripper_max_velocity" default="100.0" />
     <xacro:arg name="gripper_max_force" default="100.0" />
     <xacro:arg name="sim_gazebo" default="false" />
@@ -32,10 +35,15 @@
     <xacro:link6
         parent="world"
         prefix="$(arg prefix)"
-        gripper="$(arg gripper)"
         robot_ip="$(arg robot_ip)"
         username="$(arg username)"
         password="$(arg password)"
+        use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)"
+        gripper="$(arg gripper)"
+        gripper_joint_name="$(arg gripper_joint_name)"
+        gripper_b_joint_name="$(arg gripper_b_joint_name)"
+        gripper_modbus_id="$(arg gripper_modbus_id)"
+        gripper_b_modbus_id="$(arg gripper_b_modbus_id)"
         use_fake_hardware="$(arg use_fake_hardware)"
         fake_sensor_commands="$(arg fake_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
@@ -44,9 +52,38 @@
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
     </xacro:link6>
 
+    <!-- Conditionally include gripper -->
+    <xacro:property name="gripper" value="$(arg gripper)"/>
+
+    <!-- If no gripper, define tool frame here -->
+    <xacro:if value="${not gripper}">
+        <link name="$(arg prefix)tool_frame" />
+        <joint name="$(arg prefix)tool_frame_joint" type="fixed">
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <parent link="$(arg prefix)end_effector_link" />
+            <child link="$(arg prefix)tool_frame" />
+            <axis xyz="0 0 0" />
+        </joint>
+    </xacro:if>
+
+    <!-- Include and load the gripper if defined -->
+    <xacro:unless value="${not gripper}">
+        <xacro:include filename="$(find link6_description)/urdf/grippers/$(arg gripper)_macro.xacro" />
+        <xacro:load_gripper
+            prefix="$(arg prefix)"
+            parent="$(arg prefix)end_effector_link"
+            sim_gazebo="$(arg sim_gazebo)"
+            use_fake_hardware="$(arg use_fake_hardware)"
+            fake_sensor_commands="$(arg fake_sensor_commands)"
+            use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)">
+        </xacro:load_gripper>
+    </xacro:unless>
+
+
     <xacro:if value="$(arg sim_gazebo)">
         <gazebo>
-            <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+            <plugin filename="gz_ros2_control-system"
+                name="gz_ros2_control::GazeboSimROS2ControlPlugin">
                 <parameters>$(find link6_control)/config/kortex3_controllers.yaml</parameters>
                 <controller_manager_node_name>controller_manager</controller_manager_node_name>
             </plugin>

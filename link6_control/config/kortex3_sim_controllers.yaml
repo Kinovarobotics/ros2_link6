@@ -50,6 +50,7 @@ joint_velocity_controller:
 
 cartesian_motion_controller:
   ros__parameters:
+    type: cartesian_motion_controller/CartesianMotionController
     robot_base_link: "base_link"
     end_effector_link: "end_effector_link"
     joints:
@@ -89,6 +90,7 @@ motion_control_handle:
 
 robotiq_gripper_controller:
   ros__parameters:
+    type: position_controllers/GripperActionController
     default: true
     joint: robotiq_85_left_knuckle_joint
     allow_stalling: true
