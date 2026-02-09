@@ -41,7 +41,6 @@
       - [Simulation Control:](#simulation-control)
     - [6.3 Testing Tools](#63-testing-tools)
       - [6.3.1 Read‑Only Test](#631-readonly-test)
-      - [6.3.2 Velocity Control Test](#632-velocity-control-test)
     - [6.4 MoveIt](#64-moveit)
       - [6.4.1 Real Hardware](#641-real-hardware)
       - [6.4.2 Simulation](#642-simulation)
@@ -50,12 +49,21 @@
     - [7.2 Switching Modes](#72-switching-modes)
     - [7.3 Fault Handling](#73-fault-handling)
     - [7.4 Emergency Stop (Category 0) via ROS2](#74-emergency-stop-category-0-via-ros2)
+      - [Triggering a Simulated Emergency Stop](#triggering-a-simulated-emergency-stop)
+      - [Recovery](#recovery)
+      - [Safety Notes](#safety-notes)
     - [7.5 Interaction with the Webapp Programs via ROS2](#75-interaction-with-the-webapp-programs-via-ros2)
-  - [8. Visualization](#9-visualization)
-    - [8.1 RViz Setup](#91-rviz-setup)
-    - [8.2 Interactive Marker Control](#92-interactive-marker-control)
-    - [8.3 Force/Torque Zeroing](#93-forcetorque-zeroing)
-  - [9. Package Overview](#10-package-overview)
+      - [7.5.1 Listing the Available Programs](#751-listing-the-available-programs)
+      - [7.5.2 Running a Specific Program](#752-running-a-specific-program)
+      - [7.5.3 Stopping a Running Program](#753-stopping-a-running-program)
+      - [7.5.4 Checking Program Status](#754-checking-program-status)
+      - [7.5.5 Complete Workflow Example](#755-complete-workflow-example)
+      - [7.6 Protection Zones Information](#76-protection-zones-information)
+  - [8. Visualization](#8-visualization)
+    - [8.1 RViz Setup](#81-rviz-setup)
+    - [8.2 Interactive Marker Control](#82-interactive-marker-control)
+    - [8.3 Force/Torque Zeroing](#83-forcetorque-zeroing)
+  - [9. Package Overview](#9-package-overview)
     - [link6\_description](#link6_description)
     - [link6\_driver](#link6_driver)
     - [link6\_control](#link6_control)
@@ -199,8 +207,6 @@ link6_ws/
   cd $COLCON_WS
   vcs import src --skip-existing --input src/ros2_kortex3.$ROS_DISTRO.repos
   ```
-
-2. 
 
 ### 5.3 Dependencies
 
@@ -466,6 +472,9 @@ To use MoveIt with a real life Link6, first bringup the robot:
 ```bash
 ros2 launch link6_bringup real_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
+
+Then activate the joint_trajectory_controller (refer to section 6.2.1)
+
 Then start MoveIt:
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
@@ -480,6 +489,9 @@ To use MoveIt with a simulated Link6, first bringup the robot:
 ```bash
 ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
+
+Then activate the joint_trajectory_controller (refer to section 6.2.1)
+
 Then start MoveIt:
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_sim_time:=true use_rviz:=true
@@ -565,6 +577,7 @@ ros2 service call /kortex3_hardware/simulate_estop \
 After triggering the fault, recover using the teach pendant to:
 - Clear the faults
 - Turn on the arm
+- Restart the ROS2 launch file
 
 #### Safety Notes
 
@@ -767,9 +780,9 @@ This service is useful for monitoring which protection zones are currently defin
 
 ---
 
-## 9. Visualization
+## 8. Visualization
 
-### 9.1 RViz Setup
+### 8.1 RViz Setup
 
 In a new terminal, source your workspace and run RViz with the provided configuration file. This will load the robot model and all necessary displays.
 
@@ -782,13 +795,12 @@ ros2 run rviz2 rviz2 \
   <img src="doc/resources/rviz_default.png" alt="Default Rviz with RobotModel Loaded." width="60%"/>
 </p>
 
-### 9.2 Interactive Marker Control
+### 8.2 Interactive Marker Control
 
 The robot launches with the cartesian\_motion\_controller active, but the interactive marker handle is off by default. To control the robot by dragging a marker in RViz, you must activate the motion\_control\_handle.
 
 ```bash
-ros2 control switch_controllers \
-  --activate motion_control_handle
+ros2 control switch_controllers --activate motion_control_handle
 ```
 
 If the interactive marker is not on the side menu of rviz, then you can add it by clicking on Add button and in the by topic tab, select /tool\_wrench/Wrench.
@@ -797,7 +809,7 @@ If the interactive marker is not on the side menu of rviz, then you can add it b
   <img src="doc/resources/add_interactive.png" alt="Rviz Add by topic tab" width="30%"/>
 </p>
 
-### 9.3 Force/Torque Zeroing
+### 8.3 Force/Torque Zeroing
 
 The wrench visual might have non-calibrated force/torque readings and will show something like this:
 
@@ -813,7 +825,7 @@ You can open the web app go on the side menu and select robot. Once that is done
 
 ---
 
-## 10. Package Overview
+## 9. Package Overview
 
 ### link6\_description
 

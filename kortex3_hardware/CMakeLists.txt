@@ -180,9 +180,6 @@ if(BUILD_TESTING)
 
     add_executable(test_send_velocity test/test_send_velocity.cpp)
     target_link_libraries(test_send_velocity PRIVATE kortex3_hardware_interface)
-
-    add_executable(test_read_calibration test/test_read_calibration.cpp)
-    target_link_libraries(test_read_calibration PRIVATE kortex3_hardware_interface)
 endif()
 
 # --- Installation Rules ---
@@ -191,7 +188,6 @@ if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only
             test_send_velocity
-            test_read_calibration
     )
 endif()
 

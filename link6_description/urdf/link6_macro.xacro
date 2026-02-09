@@ -1,20 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <robot name="link6" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="link6"
-    params="
+  <xacro:macro name="link6" params="
     parent
     *origin
     prefix:=''
-    gripper
     robot_ip
     username:=admin
     password:=admin
+    use_internal_bus_gripper_comm:=false
+    gripper
+    gripper_joint_name:=''
+    gripper_b_joint_name:=''
+    gripper_modbus_id:=9
+    gripper_b_modbus_id:=10
     use_fake_hardware:=false
     mock_sensor_commands:=false
     sim_gazebo:=false
-    gripper_com_port:=/dev/ttyUSB0
     moveit_active:=false
     initial_positions_file:='$(find link6_description)/config/initial_positions.yaml'
     calibration_file:='$(find link6_description)/config/default_calibration.yaml'">
@@ -58,13 +60,19 @@
     <xacro:include filename="$(find link6_description)/urdf/link6.ros2_control.xacro" />
     <xacro:link6_ros2_control
       prefix="${prefix}"
+      robot_ip="${robot_ip}"
+      username="${username}"
+      password="${password}"
+      use_internal_bus_gripper_comm="${use_internal_bus_gripper_comm}"
+      gripper="${gripper}"
+      gripper_joint_name="${gripper_joint_name}"
+      gripper_b_joint_name="${gripper_b_joint_name}"
+      gripper_modbus_id="${gripper_modbus_id}"
+      gripper_b_modbus_id="${gripper_b_modbus_id}"
       use_fake_hardware="${use_fake_hardware}"
       mock_sensor_commands="${mock_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
       initial_positions="${initial_positions}"
-      robot_ip="${robot_ip}"
-      username="${username}"
-      password="${password}"
       moveit_active="${moveit_active}" />
 
 
@@ -459,33 +467,5 @@
       <parent link="${prefix}wrist_interface_link" />
       <child link="${prefix}end_effector_link" />
     </joint>
-
-    <!-- If no gripper, define tool frame here -->
-    <xacro:if value="${not gripper}">
-      <link name="${prefix}tool_frame" />
-      <joint name="${prefix}tool_frame_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <parent link="${prefix}end_effector_link" />
-        <child link="${prefix}tool_frame" />
-        <axis xyz="0 0 0" />
-      </joint>
-    </xacro:if>
-
-    <!-- Include and load the gripper if defined -->
-    <xacro:unless value="${not gripper}">
-      <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
-        <xacro:robotiq_gripper
-          name="RobotiqGripperHardwareInterface"
-          parent="${prefix}end_effector_link"
-          prefix="${prefix}"
-          use_fake_hardware="${use_fake_hardware}"
-          mock_sensor_commands="${mock_sensor_commands}"
-          include_ros2_control="${sim_gazebo}"
-          com_port="${gripper_com_port}"
-          sim_gazebo="${sim_gazebo}">
-          <origin xyz="0 0 0" rpy="0 0 0" />
-        </xacro:robotiq_gripper>
-    </xacro:unless>
-
   </xacro:macro>
 </robot>

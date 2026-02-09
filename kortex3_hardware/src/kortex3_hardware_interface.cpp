@@ -17,13 +17,179 @@ namespace kortex3_driver
 const rclcpp::Logger Kortex3HardwareInterface::LOGGER =
   rclcpp::get_logger("Kortex3HardwareInterface");
 
+// ============================================================================
+// GripperController Implementation
+// ============================================================================
+
+bool GripperController::initialize(std::shared_ptr<k_api::RouterMQTT> router, const rclcpp::Logger& logger)
+{
+  RCLCPP_INFO(logger, "Initializing gripper '%s' with Modbus ID %u", joint_name_.c_str(), modbus_id_);
+
+  modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router, modbus_id_);
+
+  if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
+    RCLCPP_ERROR(logger, "Failed to connect to gripper '%s' via Modbus.", joint_name_.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(logger, "Gripper '%s' Modbus connection established.", joint_name_.c_str());
+
+  gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
+  initialized_ = true;
+
+  // Activate the gripper
+  RCLCPP_INFO(logger, "Activating gripper '%s'...", joint_name_.c_str());
+
+  gripper_->FreezeGripper();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  gripper_->ReadRegister();
+
+  gripper_->SetActivateRequest();
+  gripper_->SendRequest();
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  gripper_->ReadRegister();
+
+  // Poll until activation completes
+  const auto activation_timeout = std::chrono::seconds(10);
+  auto activation_start = std::chrono::steady_clock::now();
+  bool activation_complete = false;
+
+  while (std::chrono::steady_clock::now() - activation_start < activation_timeout)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    if (!gripper_->ReadRegister())
+    {
+      RCLCPP_WARN(logger, "Failed to read gripper '%s' status during activation.", joint_name_.c_str());
+      continue;
+    }
+
+    if (gripper_->GetActivateEcho())
+    {
+      activation_complete = true;
+      RCLCPP_INFO(logger, "Gripper '%s' activation completed successfully.", joint_name_.c_str());
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      break;
+    }
+    else
+    {
+      uint8_t status = gripper_->GetStatus();
+      RCLCPP_DEBUG(logger, "Gripper '%s' activating... (STA=%d)", joint_name_.c_str(), status);
+    }
+  }
+
+  if (!activation_complete)
+  {
+    RCLCPP_ERROR(logger, "Gripper '%s' activation failed or timed out.", joint_name_.c_str());
+    return false;
+  }
+
+  RCLCPP_INFO(logger, "Gripper '%s' activation complete.", joint_name_.c_str());
+  return true;
+}
+
+std::optional<double> GripperController::readPosition(std::mutex& mutex, const rclcpp::Logger& logger)
+{
+  // Rate-limit BEFORE touching the mutex
+  const auto now = std::chrono::steady_clock::now();
+  if (now < next_poll_) {
+    return position_;  // return cached value
+  }
+
+  // Try to acquire the mutex without blocking
+  std::unique_lock<std::mutex> lk(mutex, std::try_to_lock);
+  if (!lk.owns_lock()) {
+    // Another Modbus op in-flight; try again soon without blocking
+    next_poll_ = now + std::chrono::milliseconds(10);
+    return position_;
+  }
+
+  if (!initialized_) {
+    return std::nullopt;
+  }
+
+  // Read once; if it fails, reconnect and retry once
+  bool ok = gripper_->ReadRegister();
+  if (!ok) {
+    RCLCPP_WARN(logger, "ReadRegister() failed for gripper '%s'; reconnecting and retrying once", joint_name_.c_str());
+    modbus_wrapper_->CloseConnection();
+    if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+      ok = gripper_->ReadRegister();
+    }
+  }
+
+  // Set next poll time regardless
+  next_poll_ = now + poll_period_;
+
+  if (!ok) {
+    return std::nullopt;
+  }
+
+  // Decode & cache
+  const uint8_t raw = gripper_->GetPosition();
+  position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);
+  return position_;
+}
+
+void GripperController::sendCommand(double position_radians, std::mutex& mutex)
+{
+  // Gate BEFORE locking to avoid needless contention
+  const auto now = std::chrono::steady_clock::now();
+
+  // Limit command rate
+  if (now < next_send_) return;
+
+  // Clamp into stroke and skip tiny, redundant updates
+  const double clamped = std::clamp(position_radians, 0.0, 0.025);
+  if (last_cmd_pos_ == last_cmd_pos_ &&   // not NaN
+      std::abs(clamped - last_cmd_pos_) < 0.0001)  // ~0.4% of stroke
+  {
+    return;
+  }
+
+  // Serialize Modbus access
+  std::lock_guard<std::mutex> lk(mutex);
+  if (!initialized_ || !gripper_) return;
+
+  const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
+  const uint8_t spd = 255;
+
+  // Best-effort write sequence
+  gripper_->ClearGoToRequest();
+  (void)gripper_->SendRequest();
+
+  gripper_->SetPositionRequest(pos);
+  gripper_->SetSpeedRequest(spd);
+  gripper_->SetGoToRequest();
+  (void)gripper_->SendRequest();
+
+  last_cmd_pos_ = clamped;
+  next_send_ = now + cmd_period_;
+}
+
+void GripperController::shutdown(std::mutex& mutex)
+{
+  std::lock_guard<std::mutex> lk(mutex);
+  if (modbus_wrapper_) modbus_wrapper_->CloseConnection();
+  gripper_.reset();
+  modbus_wrapper_.reset();
+  initialized_ = false;
+}
+
+// ============================================================================
+// Kortex3HardwareInterface Implementation
+// ============================================================================
+
 Kortex3HardwareInterface::Kortex3HardwareInterface()
   : mqtt_port_(1883),
     udp_feedback_port_(10001),
     actuator_count_(6), // Default, updated from robot during activation.
     in_fault_(false),
     node_ptr_(nullptr),
-    gripper_joint_name_("")
+    gripper_name_(""),
+    use_internal_bus_gripper_comm_(false),
+    gripper_a_(9),   // Default Modbus ID 9
+    gripper_b_(10)   // Default Modbus ID 10
 {
 }
 
@@ -42,6 +208,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   robot_ip_ = info_.hardware_parameters.at("robot_ip");
   username_ = info_.hardware_parameters.at("username");
   password_ = info_.hardware_parameters.at("password");
+  gripper_name_ = info_.hardware_parameters.at("gripper");
+
   if (info_.hardware_parameters.count("mqtt_port"))
   {
     mqtt_port_ = std::stoi(info_.hardware_parameters.at("mqtt_port"));
@@ -51,15 +219,59 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     udp_feedback_port_ = std::stoi(info_.hardware_parameters.at("udp_feedback_port"));
   }
 
-  // gripper joint name
-  gripper_joint_name_ = info_.joints[info_.joints.size()-1].name;
-  if (gripper_joint_name_.empty())
+  // Configure gripper communication
+  if (
+    (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "true") ||
+    (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "True"))
   {
-    RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
+    use_internal_bus_gripper_comm_ = true;
+    RCLCPP_INFO(LOGGER, "Using internal bus communication for grippers!");
+  }
+
+  // Configure Gripper A (optional)
+  if (info_.hardware_parameters.count("gripper_joint_name") &&
+      !info_.hardware_parameters.at("gripper_joint_name").empty())
+  {
+    gripper_a_.joint_name_ = info_.hardware_parameters.at("gripper_joint_name");
+    RCLCPP_INFO(LOGGER, "Gripper A joint name: '%s'", gripper_a_.joint_name_.c_str());
+
+    // Modbus ID is optional, will use default (9) if not specified
+    if (info_.hardware_parameters.count("gripper_modbus_id"))
+    {
+      gripper_a_.modbus_id_ = static_cast<uint16_t>(std::stoul(info_.hardware_parameters.at("gripper_modbus_id")));
+      RCLCPP_INFO(LOGGER, "Gripper A Modbus ID: %u", gripper_a_.modbus_id_);
+    }
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper A Modbus ID not specified, using default: %u", gripper_a_.modbus_id_);
+    }
   }
   else
   {
-    RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
+    RCLCPP_INFO(LOGGER, "Gripper A joint name not specified, Gripper A will not be initialized.");
+  }
+
+  // Configure Gripper B (optional)
+  if (info_.hardware_parameters.count("gripper_b_joint_name") &&
+      !info_.hardware_parameters.at("gripper_b_joint_name").empty())
+  {
+    gripper_b_.joint_name_ = info_.hardware_parameters.at("gripper_b_joint_name");
+    RCLCPP_INFO(LOGGER, "Gripper B joint name: '%s'", gripper_b_.joint_name_.c_str());
+
+    // Modbus ID is optional, will use default (10) if not specified
+    if (info_.hardware_parameters.count("gripper_b_modbus_id"))
+    {
+      gripper_b_.modbus_id_ = static_cast<uint16_t>(std::stoul(info_.hardware_parameters.at("gripper_b_modbus_id")));
+      RCLCPP_INFO(LOGGER, "Gripper B Modbus ID: %u", gripper_b_.modbus_id_);
+    }
+    else
+    {
+      RCLCPP_INFO(LOGGER, "Gripper B Modbus ID not specified, using default: %u", gripper_b_.modbus_id_);
+    }
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "Gripper B joint name not specified, Gripper B will not be initialized.");
   }
 
   // Initialize state and command vectors.
@@ -67,15 +279,28 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   joint_positions_.resize(actuator_count_, 0.0);
   joint_velocities_.resize(actuator_count_, 0.0);
   joint_torques_.resize(actuator_count_, 0.0);
-  gripper_command_position_ = std::numeric_limits<double>::quiet_NaN();
-  gripper_position_ = std::numeric_limits<double>::quiet_NaN();
+
+  // Initialize gripper command positions
+  gripper_a_.command_position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_a_.position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_b_.command_position_ = std::numeric_limits<double>::quiet_NaN();
+  gripper_b_.position_ = std::numeric_limits<double>::quiet_NaN();
 
   // Verify that the URDF's joint count matches the expected count.
-  if (info_.joints.size() != actuator_count_+1)
+  // Count configured grippers
+  int gripper_joint_count = 0;
+  if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
+  {
+    if (!gripper_a_.joint_name_.empty()) gripper_joint_count++;
+    if (!gripper_b_.joint_name_.empty()) gripper_joint_count++;
+  }
+
+  int expected_joints_number = actuator_count_ + gripper_joint_count;
+  if (info_.joints.size() != expected_joints_number)
   {
     RCLCPP_ERROR(LOGGER,
-      "URDF configuration error: Expected %zu joints, but got %zu.",
-      actuator_count_+1, info_.joints.size());
+      "URDF configuration error: Expected %d joints (%zu arm + %d gripper), but got %zu.",
+      expected_joints_number, actuator_count_, gripper_joint_count, info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -185,86 +410,68 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
 
-    // 7. Initialize gripper Modbus connection
-    constexpr uint16_t gripper_slave_id = 9; // Robotiq default Modbus ID
-    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
-
-    if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
-      RCLCPP_ERROR(LOGGER, "Failed to connect to Robotiq gripper via Modbus.");
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-
-    else
+    // 7. Initialize grippers if using internal bus communication
+    if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
     {
-      RCLCPP_INFO(LOGGER, "Gripper Modbus connection established.");
-    }
-
-    gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
-    gripper_initialized_ = true;
-
-    // 8. Activate the gripper (following Robotiq reference implementation)
-    RCLCPP_INFO(LOGGER, "Activating Robotiq gripper...");
-
-    // Stop any ongoing gripper motion before activation
-    gripper_->FreezeGripper();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    gripper_->ReadRegister();
-
-    // Send activation request
-    gripper_->SetActivateRequest();
-    gripper_->SendRequest();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    gripper_->ReadRegister();
-  
-    // Poll until activation completes (timeout: 10 seconds)
-    const auto activation_timeout = std::chrono::seconds(10);
-    auto activation_start = std::chrono::steady_clock::now();
-    bool activation_complete = false;
-
-    while (std::chrono::steady_clock::now() - activation_start < activation_timeout)
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-      if (!gripper_->ReadRegister())
+      // Initialize Gripper A if joint name was specified
+      if (!gripper_a_.joint_name_.empty())
       {
-        RCLCPP_WARN(LOGGER, "Failed to read gripper status during activation.");
-        continue;
+        if (!gripper_a_.initialize(router_mqtt_, LOGGER))
+        {
+          RCLCPP_ERROR(LOGGER, "Failed to initialize Gripper A.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+
+        // First read from Gripper A
+        auto opt_gripper_a_position = gripper_a_.readPosition(gripper_mtx_, LOGGER);
+        if (!opt_gripper_a_position.has_value())
+        {
+          RCLCPP_WARN(LOGGER, "Failed to read Gripper A position on activation.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+        float gripper_a_initial_position = static_cast<float>(opt_gripper_a_position.value());
+        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad.", gripper_a_initial_position);
+
+        gripper_a_.command_position_ = gripper_a_initial_position;
+        gripper_a_.sendCommand(gripper_a_initial_position, gripper_mtx_);
       }
 
-      // Check if activation is complete (GetActivateEcho returns true when ACT echo matches)
-      if (gripper_->GetActivateEcho())
+      // Initialize Gripper B if joint name was specified
+      if (!gripper_b_.joint_name_.empty())
       {
-        activation_complete = true;
-        RCLCPP_WARN(LOGGER, "Gripper activation completed successfully.");
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Final stabilization delay
-        break;
+        if (!gripper_b_.initialize(router_mqtt_, LOGGER))
+        {
+          RCLCPP_ERROR(LOGGER, "Failed to initialize Gripper B.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+
+        // First read from Gripper B
+        auto opt_gripper_b_position = gripper_b_.readPosition(gripper_mtx_, LOGGER);
+        if (!opt_gripper_b_position.has_value())
+        {
+          RCLCPP_WARN(LOGGER, "Failed to read Gripper B position on activation.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+        float gripper_b_initial_position = static_cast<float>(opt_gripper_b_position.value());
+        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad.", gripper_b_initial_position);
+
+        gripper_b_.command_position_ = gripper_b_initial_position;
+        gripper_b_.sendCommand(gripper_b_initial_position, gripper_mtx_);
       }
-      else
+
+      if (!gripper_a_.joint_name_.empty() && !gripper_b_.joint_name_.empty())
       {
-        uint8_t status = gripper_->GetStatus();
-        RCLCPP_DEBUG(LOGGER, "Gripper activating... (STA=%d)", status);
+        RCLCPP_INFO(LOGGER, "Both grippers initialized successfully.");
+      }
+      else if (!gripper_a_.joint_name_.empty())
+      {
+        RCLCPP_INFO(LOGGER, "Gripper A initialized successfully.");
+      }
+      else if (!gripper_b_.joint_name_.empty())
+      {
+        RCLCPP_INFO(LOGGER, "Gripper B initialized successfully.");
       }
     }
-
-    if (!activation_complete)
-    {
-      RCLCPP_ERROR(LOGGER, "Gripper activation failed or timed out. Cannot control gripper.");
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-    // First read from gripper
-    auto opt_gripper_position = readGripperPosition();
-    if (!opt_gripper_position.has_value())
-    {
-      RCLCPP_WARN(LOGGER, "Failed to read gripper position on activation.");
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-    float gripper_initial_position = static_cast<float>(opt_gripper_position.value());
-    RCLCPP_INFO(LOGGER, "Gripper initial position is '%f'.", gripper_initial_position);
-
-    //to radians
-    gripper_command_position_ = gripper_initial_position;
-
-    sendGripperCommand(gripper_initial_position);
 
     RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -313,11 +520,15 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
       router_mqtt_->SpinProcess(std::chrono::milliseconds{0});
     }
 
-    std::lock_guard<std::mutex> lk(gripper_mtx_);
-    if (modbus_wrapper_) modbus_wrapper_->CloseConnection();
-    gripper_.reset();
-    modbus_wrapper_.reset();
-    gripper_initialized_ = false;
+    // Shutdown grippers that were initialized
+    if (!gripper_a_.joint_name_.empty())
+    {
+      gripper_a_.shutdown(gripper_mtx_);
+    }
+    if (!gripper_b_.joint_name_.empty())
+    {
+      gripper_b_.shutdown(gripper_mtx_);
+    }
   }
   catch (const std::exception& ex)
   {
@@ -347,12 +558,19 @@ Kortex3HardwareInterface::export_state_interfaces()
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
-    if (info_.joints[i].name == gripper_joint_name_)
+    if (info_.joints[i].name == gripper_a_.joint_name_)
     {
       state_interfaces.emplace_back(hardware_interface::StateInterface(
-        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_position_));
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_.position_));
       state_interfaces.emplace_back(hardware_interface::StateInterface(
-        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_velocity_));
+        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_a_.velocity_));
+    }
+    else if (info_.joints[i].name == gripper_b_.joint_name_)
+    {
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_.position_));
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_b_.velocity_));
     }
     else
     {
@@ -361,7 +579,7 @@ Kortex3HardwareInterface::export_state_interfaces()
   }
 
   for (std::size_t i = 0; i < arm_joint_names.size(); i++)
-  {  
+  {
     state_interfaces.emplace_back(hardware_interface::StateInterface(
       arm_joint_names[i], hardware_interface::HW_IF_POSITION, &joint_positions_[i]));
     state_interfaces.emplace_back(hardware_interface::StateInterface(
@@ -379,17 +597,22 @@ Kortex3HardwareInterface::export_command_interfaces()
   std::vector<string> arm_joint_names;
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
-    if (info_.joints[i].name == gripper_joint_name_)
+    if (info_.joints[i].name == gripper_a_.joint_name_)
     {
       command_interfaces.emplace_back(hardware_interface::CommandInterface(
-        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_command_position_));
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_.command_position_));
+    }
+    else if (info_.joints[i].name == gripper_b_.joint_name_)
+    {
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_.command_position_));
     }
     else
     {
       arm_joint_names.emplace_back(info_.joints[i].name);
     }
   }
-  
+
   for (std::size_t i = 0; i < arm_joint_names.size(); i++)
   {
     command_interfaces.emplace_back(hardware_interface::CommandInterface(
@@ -401,6 +624,19 @@ Kortex3HardwareInterface::export_command_interfaces()
 hardware_interface::return_type Kortex3HardwareInterface::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  // Read gripper states
+  if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
+  {
+    if (!gripper_a_.joint_name_.empty())
+    {
+      gripper_a_.readPosition(gripper_mtx_, LOGGER);
+    }
+    if (!gripper_b_.joint_name_.empty())
+    {
+      gripper_b_.readPosition(gripper_mtx_, LOGGER);
+    }
+  }
+  
   static int read_call_count = 0;
   read_call_count++;
 
@@ -408,8 +644,6 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
     RCLCPP_DEBUG(LOGGER, "read() called %d times", read_call_count);
   }
 
-  // read gripper state
-  readGripperPosition();
   try {
     auto feedback = base_cyclic_udp_->RefreshFeedback();
 
@@ -649,64 +883,6 @@ hardware_interface::return_type Kortex3HardwareInterface::read(
   return hardware_interface::return_type::OK;
 }
 
-std::optional<double> Kortex3HardwareInterface::readGripperPosition()
-{
-  // 1) Rate-limit BEFORE touching the mutex
-  const auto now = std::chrono::steady_clock::now();
-  if (now < next_gripper_poll_) {
-    return gripper_position_;  // return cached value
-  }
-
-  // 2) Try to acquire the mutex without blocking the control loop
-  std::unique_lock<std::mutex> lk(gripper_mtx_, std::try_to_lock);
-  if (!lk.owns_lock()) {
-    // Another Modbus op in-flight; try again soon without blocking
-    next_gripper_poll_ = now + std::chrono::milliseconds(10);
-    return gripper_position_;
-  }
-
-  // 3) Lazy init once
-  if (!gripper_initialized_) {
-    constexpr uint16_t gripper_slave_id = 9;
-    modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router_mqtt_, gripper_slave_id);
-
-    if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
-      RCLCPP_WARN(LOGGER, "Modbus init failed; will retry later.");
-      next_gripper_poll_ = now + gripper_poll_period_;
-      return std::nullopt;
-    }
-
-    gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
-    gripper_initialized_ = true;
-  }
-
-  // 4) Read once; if it fails, reconnect and retry once (no sleeps)
-  bool ok = gripper_->ReadRegister();
-  if (!ok) {
-    RCLCPP_WARN(LOGGER, "ReadRegister() failed; reconnecting and retrying once");
-    modbus_wrapper_->CloseConnection();
-    if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
-      ok = gripper_->ReadRegister();
-    }
-  }
-
-  // Set next poll time regardless, so we don’t hammer on failures
-  next_gripper_poll_ = now + gripper_poll_period_;
-
-  if (!ok) {
-    return std::nullopt;
-  }
-
-  // 5) Decode & cache
-  const uint8_t raw = gripper_->GetPosition();
-  gripper_position_ = static_cast<double>(raw) / 255.0;  // normalized 0.0-1.0
-  //std::cout << "Gripper position: " << gripper_position_ << std::endl;
-  return gripper_position_;
-}
-
-
-
-
 hardware_interface::return_type Kortex3HardwareInterface::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
@@ -775,54 +951,21 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     }
   }
 
-  //Gripper command
-  sendGripperCommand(gripper_command_position_);
+  // Send gripper commands
+  if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
+  {
+    if (!gripper_a_.joint_name_.empty())
+    {
+      gripper_a_.sendCommand(gripper_a_.command_position_, gripper_mtx_);
+    }
+    if (!gripper_b_.joint_name_.empty())
+    {
+      gripper_b_.sendCommand(gripper_b_.command_position_, gripper_mtx_);
+    }
+  }
 
   return hardware_interface::return_type::OK;
 }
-
-void Kortex3HardwareInterface::sendGripperCommand(double position_radians)
-{
-  // --- Gate BEFORE locking to avoid needless contention ---
-  const auto now = std::chrono::steady_clock::now();
-
-  // Limit command rate
-  if (now < next_gripper_send_) return;
-
-  // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 1.0);
-  if (last_gripper_cmd_pos_ == last_gripper_cmd_pos_ &&   // not NaN
-      std::abs(clamped - last_gripper_cmd_pos_) < 0.005)  // ~0.5% of stroke
-  {
-    return;
-  }
-
-  // --- Serialize Modbus access ---
-  std::lock_guard<std::mutex> lk(gripper_mtx_);
-  if (!gripper_initialized_ || !gripper_) return;
-
-  const uint8_t pos = static_cast<uint8_t>(clamped * 255.0);
-
-  // Best-effort write sequence (no sleeps, no loop blocking)
-  gripper_->ClearGoToRequest();
-  (void)gripper_->SendRequest();
-
-  gripper_->SetPositionRequest(pos);
-  gripper_->SetGoToRequest();
-  (void)gripper_->SendRequest();
-
-  // Optionally: quick reconnect + one retry if your API returns a bool
-  // if (!gripper_->SendRequest()) {
-  //   modbus_wrapper_->CloseConnection();
-  //   if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
-  //     (void)gripper_->SendRequest();
-  //   }
-  // }
-
-  last_gripper_cmd_pos_ = clamped;
-  next_gripper_send_    = now + gripper_cmd_period_;
-}
-
 
 void Kortex3HardwareInterface::check_and_power_on_robot()
 {
@@ -1412,86 +1555,6 @@ void Kortex3HardwareInterface::handle_simulate_estop(
     response->success = true;
     response->message = "To clear active faults, call: ros2 service call /kortex3_hardware/clear_faults kortex3_hardware/srv/ClearFaults \"{}\"";
   }
-}
-
-bool Kortex3HardwareInterface::dump_calibration(const std::string& serial)
-{
-  try
-  {
-    // 1. Fetch the calibration data blob from the robot via MQTT.
-    auto blob = base_mqtt_->ExportArmCalibration();
-
-    // 2. Determine the path to save the calibration files.
-    // This assumes a companion description package (e.g., link6_description).
-    auto desc_share = ament_index_cpp::get_package_share_directory("link6_description");
-    fs::path cal_dir = fs::path(desc_share) / "calibration";
-    fs::create_directories(cal_dir);
-    fs::path zip_path = cal_dir / (serial + ".zip");
-
-    // 3. Write the fetched data to a .zip file.
-    std::ofstream out(zip_path, std::ios::binary | std::ios::trunc);
-    for (auto b : blob.data()) out.put(static_cast<char>(b));
-    out.close();
-    RCLCPP_INFO(LOGGER, "Calibration ZIP saved to %s", zip_path.c_str());
-
-    // 4. Unzip calib.xml from the archive for the generator script to use.
-    // Note: This creates an external dependency on the `unzip` command.
-    std::string cmd = "unzip -oq " + zip_path.string() + " calib.xml -d " + cal_dir.string();
-    if (std::system(cmd.c_str()) != 0) {
-      RCLCPP_WARN(LOGGER, "unzip command failed; XML may already exist or unzip is not installed.");
-    }
-    return true;
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_ERROR(LOGGER, "dump_calibration() failed: %s", ex.what());
-    return false;
-  }
-}
-
-bool Kortex3HardwareInterface::calibrate_robot()
-{
-  // Kortex 3 does not yet expose a unique serial number, so we use a fixed name.
-  const std::string serial = "link6";
-  if (!dump_calibration(serial))
-  {
-      return false;
-  }
-
-  // Define paths for all required files and scripts.
-  const fs::path share_dir = ament_index_cpp::get_package_share_directory("link6_description");
-  const fs::path cal_dir   = share_dir / "calibration";
-  const fs::path xml_path  = cal_dir / "calib.xml";
-  const fs::path xacro_nom = share_dir / "urdf" / "link6_nominal.xacro";
-  const fs::path temp_nom  = cal_dir  / "link6_nominal.urdf";
-  const fs::path py_script = share_dir / "scripts" / "calibrated_urdf_generator.py";
-  const fs::path out_xacro = share_dir / "urdf"   / "link6_calibrated.xacro";
-
-  // 1. Expand the nominal Xacro to a temporary URDF file.
-  // Note: This creates an external dependency on `xacro`.
-  std::ostringstream xacro_cmd;
-  xacro_cmd << "xacro " << xacro_nom << " -o " << temp_nom;
-  if (std::system(xacro_cmd.str().c_str()) != 0)
-  {
-    RCLCPP_ERROR(LOGGER, "xacro failed while expanding nominal model.");
-    return false;
-  }
-
-  // 2. Invoke the Python generator script to create the calibrated Xacro file.
-  // Note: This creates an external dependency on `python3` and the script itself.
-  std::ostringstream python_cmd;
-  python_cmd << "python3 " << py_script
-             << " --urdf_path "        << temp_nom
-             << " --calibration_file " << xml_path
-             << " --output_file "      << out_xacro;
-  if (std::system(python_cmd.str().c_str()) != 0)
-  {
-    RCLCPP_WARN(LOGGER, "Calibration generation script failed; will use nominal model.");
-    return false;
-  }
-
-  RCLCPP_INFO(LOGGER, "Calibrated Xacro written to %s", out_xacro.c_str());
-  return true;
 }
 
 void Kortex3HardwareInterface::handle_run_program(
