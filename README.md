@@ -85,13 +85,13 @@
 
 #### 4.1.1 Install Dependencies
 
-1. **ROS2 Humble** on Ubuntu 22.04  
+1. **ROS2 Jazzy** on Ubuntu 24.04  
    Follow the official guide:  
-   https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
+   https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
 
-2. **Ignition Fortress (Gazebo)**  
+2. **Ignition Harmonic (Gazebo)**  
    See “ROS2 Integration” section here:  
-   https://gazebosim.org/docs/fortress/ros_installation/
+   https://gazebosim.org/docs/harmonic/ros_installation/
 
 3. Install wget:
   ```bash
@@ -177,6 +177,7 @@ git lfs pull
 
 ```bash
 cd $COLCON_WS
+shopt -s dotglob
 mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
 ```
 
@@ -190,7 +191,7 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
-    ├── ros2_kortex3.humble.repos
+    ├── ros2_kortex3.jazzy.repos
     ├── LICENSE
     └── README.md
 ```
@@ -217,9 +218,9 @@ sudo apt update
 sudo apt install \
   python3-rosdep \
   python3-colcon-clean \
-  ros-humble-gz-ros2-control \
-  ros-humble-gz-ros2-control-demos \
-  ros-humble-gripper-controllers
+  ros-jazzy-gz-ros2-control \
+  ros-jazzy-gz-ros2-control-demos \
+  ros-jazzy-gripper-controllers
 
 ```
 
@@ -291,12 +292,12 @@ ros2 launch link6_bringup real_robot.launch.py calibration_file:=/path/to/your_r
 
 #### 6.1.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
 
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share:$(ros2 pkg prefix robotiq_description)/share
 ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 To bringup the simulated arm without any mounted gripper, use the following:
@@ -481,12 +482,12 @@ ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
 
 #### 6.4.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To use MoveIt with a simulated Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 
 Then activate the joint_trajectory_controller (refer to section 6.2.1)
@@ -611,7 +612,7 @@ success: true
 message: "Found 3 program(s)."
 programs:
   - identifier: 1
-    name: "PickAndPlace"
+    name: "<program_name>"
   - identifier: 2
     name: "HomePosition"
   - identifier: 3
@@ -726,9 +727,9 @@ ros2 service call /controller_manager/switch_controller controller_manager_msgs/
 }"
 
 
-# 3. Run the desired program (e.g., 'PickAndPlace')
+# 3. Run the desired program (e.g., '<program_name>')
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 
 # 4. Monitor the program status
 ros2 service call /kortex3_hardware/get_program_status \

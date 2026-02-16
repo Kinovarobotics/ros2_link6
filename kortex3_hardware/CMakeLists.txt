@@ -54,6 +54,18 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 set(KORTEX_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/kortex3")
 add_compile_definitions(_OS_UNIX)
 
+# Detect system architecture and select appropriate library
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
+    message(STATUS "Detected x86_64 architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp.a")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp_ARM.a")
+    message(STATUS "Detected ARM architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp_ARM.a") 
+else()
+    message(WARNING "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}, defaulting to libKortexApiCpp.a")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
+endif()
+
 # --- Hardware Interface Library ---
 add_library(kortex3_hardware_interface SHARED
         src/kortex3_hardware_interface.cpp
@@ -117,7 +129,7 @@ target_include_directories(kortex3_hardware_interface PUBLIC
 )
 
 target_link_libraries(kortex3_hardware_interface PUBLIC
-        "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+        "${KORTEX_API_LIB}"
         nlohmann_json::nlohmann_json
         pthread
 )
@@ -164,7 +176,7 @@ target_include_directories(get_calibration_node PUBLIC
 )
 
 target_link_libraries(get_calibration_node PUBLIC
-        "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+        "${KORTEX_API_LIB}"
         pthread
 )
 
@@ -180,9 +192,6 @@ if(BUILD_TESTING)
 
     add_executable(test_send_velocity test/test_send_velocity.cpp)
     target_link_libraries(test_send_velocity PRIVATE kortex3_hardware_interface)
-
-    add_executable(test_read_calibration test/test_read_calibration.cpp)
-    target_link_libraries(test_read_calibration PRIVATE kortex3_hardware_interface)
 endif()
 
 # --- Installation Rules ---
@@ -191,7 +200,6 @@ if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only
             test_send_velocity
-            test_read_calibration
     )
 endif()
 
