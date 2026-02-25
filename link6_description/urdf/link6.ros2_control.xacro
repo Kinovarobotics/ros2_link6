@@ -65,6 +65,10 @@
           <param name="min">-3.14</param>
           <param name="max">3.14</param>
         </command_interface>
+        <command_interface name="position">
+          <param name="min">-3.14</param>
+          <param name="max">3.14</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">${initial_positions['joint_1']}</param>
         </state_interface>
@@ -73,6 +77,10 @@
       </joint>
       <joint name="${prefix}joint_2">
         <command_interface name="velocity">
+          <param name="min">-3.14</param>
+          <param name="max">3.14</param>
+        </command_interface>
+        <command_interface name="position">
           <param name="min">-3.14</param>
           <param name="max">3.14</param>
         </command_interface>
@@ -87,6 +95,10 @@
           <param name="min">-3.14</param>
           <param name="max">3.14</param>
         </command_interface>
+        <command_interface name="position">
+          <param name="min">-3.14</param>
+          <param name="max">3.14</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">${initial_positions['joint_3']}</param>
         </state_interface>
@@ -95,6 +107,10 @@
       </joint>
       <joint name="${prefix}joint_4">
         <command_interface name="velocity">
+          <param name="min">-6.28</param>
+          <param name="max">6.28</param>
+        </command_interface>
+        <command_interface name="position">
           <param name="min">-6.28</param>
           <param name="max">6.28</param>
         </command_interface>
@@ -109,6 +125,10 @@
           <param name="min">-6.28</param>
           <param name="max">6.28</param>
         </command_interface>
+        <command_interface name="position">
+          <param name="min">-6.28</param>
+          <param name="max">6.28</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">${initial_positions['joint_5']}</param>
         </state_interface>
@@ -117,6 +137,10 @@
       </joint>
       <joint name="${prefix}joint_6">
         <command_interface name="velocity">
+          <param name="min">-6.28</param>
+          <param name="max">6.28</param>
+        </command_interface>
+        <command_interface name="position">
           <param name="min">-6.28</param>
           <param name="max">6.28</param>
         </command_interface>

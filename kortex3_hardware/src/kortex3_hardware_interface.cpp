@@ -189,7 +189,8 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     gripper_name_(""),
     use_internal_bus_gripper_comm_(false),
     gripper_a_(9),   // Default Modbus ID 9
-    gripper_b_(10)   // Default Modbus ID 10
+    gripper_b_(10),  // Default Modbus ID 10
+    cmd_frame_id_(0)
 {
 }
 
@@ -276,6 +277,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
 
   // Initialize state and command vectors.
   joint_velocities_cmd_.resize(actuator_count_, 0.0);
+  joint_positions_cmd_.resize(actuator_count_, 0.0);
   joint_positions_.resize(actuator_count_, 0.0);
   joint_velocities_.resize(actuator_count_, 0.0);
   joint_torques_.resize(actuator_count_, 0.0);
@@ -406,11 +408,44 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       actuator_count_ = actuator_info.count();
     }
 
-    // 5. Set the initial operating mode for velocity control.
+    // 5. Set operating mode to AUTO, then switch to low-level servoing for position control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
 
-    // 7. Initialize grippers if using internal bus communication
+    // 6. Switch to LOW_LEVEL_SERVOING so position setpoints are sent via BaseCyclic::Refresh().
+    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
+
+    // Send 30 hold-position sync cycles immediately after mode switch.
+    // IMPORTANT: In LOW_LEVEL_SERVOING the actuators need a BaseCyclic position setpoint
+    // right after the mode transition. Delaying causes Code 50030 on the first Refresh().
+    RCLCPP_INFO(LOGGER, "Synchronizing position with 30 hold cycles...");
+    cmd_frame_id_ = 0;
+    for (int sync = 0; sync < 30; sync++)
+    {
+      auto fb = base_cyclic_udp_->RefreshFeedback();
+
+      // On the first sync cycle, capture the robot's current position as the
+      // initial command so write() holds position until a controller takes over.
+      if (sync == 0) {
+        for (size_t i = 0; i < actuator_count_ && i < (size_t)fb.actuators_size(); ++i) {
+          joint_positions_cmd_[i] = fb.actuators(i).position() * M_PI / 180.0;
+        }
+      }
+
+      k_api::BaseCyclic::Command hold_cmd;
+      hold_cmd.set_frame_id(cmd_frame_id_++);
+      for (int i = 0; i < fb.actuators_size(); ++i) {
+        auto* act = hold_cmd.add_actuators();
+        act->set_flags(0);
+        act->set_position(fb.actuators(i).position());
+        act->set_velocity(0.0f);
+      }
+      base_cyclic_udp_->Refresh(hold_cmd);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    RCLCPP_INFO(LOGGER, "Position synchronized.");
+
+    // 8. Initialize grippers if using internal bus communication
     if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
     {
       // Initialize Gripper A if joint name was specified
@@ -492,6 +527,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
     // Gracefully shut down the robot and network connections in order.
     if (base_mqtt_)
     {
+      // Exit low-level servoing before stopping — must be done while connections are open.
+      set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
       change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     }
     if (session_udp_)
@@ -617,6 +654,8 @@ Kortex3HardwareInterface::export_command_interfaces()
   {
     command_interfaces.emplace_back(hardware_interface::CommandInterface(
       arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_cmd_[i]));
+    command_interfaces.emplace_back(hardware_interface::CommandInterface(
+      arm_joint_names[i], hardware_interface::HW_IF_POSITION, &joint_positions_cmd_[i]));
   }
   return command_interfaces;
 }
@@ -891,59 +930,55 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
-  // Safety guard: Only send velocity commands if in the correct operating mode.
+  // Safety guard: Only send position commands if the robot is in AUTO operating mode.
   if (last_operating_mode_ != Kinova::Api::Common::OPERATING_MODE_AUTO) {
     return hardware_interface::return_type::OK;
   }
 
-  // Safety guard: Block velocity commands while program is running or within 1 second after completion.
-  // Check if program is currently active
+  // Safety guard: Block commands while a program is running or within 1 second after completion.
+  // (Programs cannot run in LOW_LEVEL_SERVOING, so this guard is inactive during normal operation.)
   if (is_program_active(last_program_status_)) {
     RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
-                          "Velocity commands blocked: program is currently running (status: %d)",
+                          "Position commands blocked: program is currently running (status: %d)",
                           last_program_status_);
     return hardware_interface::return_type::OK;
   }
 
-  // Check if we're within 1 second after program completion
   auto now = std::chrono::steady_clock::now();
   auto time_since_program_end = std::chrono::duration_cast<std::chrono::milliseconds>(
     now - program_end_time_).count();
 
   if (time_since_program_end >= 0 && time_since_program_end < 1000) {
     RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
-                          "Velocity commands blocked: %ld ms since program ended (blocking for 1 second)",
+                          "Position commands blocked: %ld ms since program ended (blocking for 1 second)",
                           time_since_program_end);
     return hardware_interface::return_type::OK;
   }
 
   try {
-    Kinova::Api::Base::Action action;
-    action.set_name("ros2_control_velocity_command");
-    auto *js = action.mutable_send_joint_speeds();
+    // Build a low-level position command for all arm joints.
+    // Positions are in radians (ROS convention); convert to degrees for the Kortex API.
+    k_api::BaseCyclic::Command command;
+    command.set_frame_id(cmd_frame_id_++);
 
-    // Convert joint velocities from rad/s (ROS) to deg/s (Kortex API).
     for (size_t i = 0; i < actuator_count_; ++i) {
-      auto &sp = *js->add_joint_speeds();
-      sp.set_joint_identifier(i);
-      sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
+      auto* act = command.add_actuators();
+      act->set_flags(0);
+      act->set_position(static_cast<float>(joint_positions_cmd_[i] * 180.0 / M_PI));
+      act->set_velocity(0.0f);  // No velocity feedforward; robot uses internal limits.
     }
-    base_mqtt_->ExecuteAction(action);
+    base_cyclic_udp_->Refresh(command);
   }
   catch (const Kinova::Api::KDetailedException &e) {
     std::string error_msg = e.what();
 
-    // Check if error is INVALID_PARAM - this usually means robot is in fault state
-    // but read() hasn't detected it yet (race condition)
     if (error_msg.find("INVALID_PARAM") != std::string::npos ||
         error_msg.find("ROBOT_IN_FAULT") != std::string::npos ||
         error_msg.find("WRONG_MODE") != std::string::npos) {
-      // Robot likely in fault state - set flag and let read() handle proper detection/logging
       RCLCPP_DEBUG(LOGGER, "Command rejected - robot likely in fault. Will be detected in read().");
       in_fault_ = true;
-      return hardware_interface::return_type::OK;  // Return OK, not ERROR - this is expected
+      return hardware_interface::return_type::OK;
     } else {
-      // Unexpected error - log as ERROR
       RCLCPP_ERROR(LOGGER, "Unexpected fault during write(): %s", e.what());
       RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
       in_fault_ = true;
@@ -1034,6 +1069,23 @@ void Kortex3HardwareInterface::change_operating_mode(
   catch (const k_api::KDetailedException &ex)
   {
     RCLCPP_ERROR(LOGGER, "Failed to change operating mode: %s", ex.what());
+  }
+}
+
+void Kortex3HardwareInterface::set_servoing_mode(
+  const k_api::Base::ServoingMode &mode)
+{
+  try
+  {
+    k_api::Base::ServoingModeInformation servoing_mode;
+    servoing_mode.set_servoing_mode(mode);
+    base_mqtt_->SetServoingMode(servoing_mode);
+    RCLCPP_INFO(LOGGER, "Servoing mode set to %s.",
+      k_api::Base::ServoingMode_Name(mode).c_str());
+  }
+  catch (const k_api::KDetailedException &ex)
+  {
+    RCLCPP_ERROR(LOGGER, "Failed to set servoing mode: %s", ex.what());
   }
 }
 

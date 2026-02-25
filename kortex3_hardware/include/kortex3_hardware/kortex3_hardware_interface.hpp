@@ -194,6 +194,7 @@ private:
   void check_and_power_on_robot();
   void send_zero_velocities();
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
+  void set_servoing_mode(const k_api::Base::ServoingMode& mode);
   // Controller management helpers for fault recovery
   std::vector<std::string> get_active_motion_controllers();
   // --- ROS Service Handlers ---
@@ -250,10 +251,12 @@ private:
 
   // --- State and Command Buffers ---
   size_t actuator_count_;
-  std::vector<double> joint_velocities_cmd_; ///< Buffer for velocity commands from ros2_control.
+  std::vector<double> joint_velocities_cmd_; ///< Buffer for velocity commands (exported but unused in low-level mode).
+  std::vector<double> joint_positions_cmd_;  ///< Buffer for position commands sent via BaseCyclic::Refresh().
   std::vector<double> joint_positions_;      ///< Buffer for joint position states.
   std::vector<double> joint_velocities_;     ///< Buffer for joint velocity states.
   std::vector<double> joint_torques_;        ///< Buffer for joint torque states.
+  uint32_t cmd_frame_id_;                    ///< Monotonically increasing frame counter for BaseCyclic commands.
 
   // Gripper controllers
   bool use_internal_bus_gripper_comm_;
