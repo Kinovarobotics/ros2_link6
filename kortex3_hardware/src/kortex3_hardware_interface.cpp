@@ -968,6 +968,16 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
       act->set_velocity(0.0f);  // No velocity feedforward; robot uses internal limits.
     }
     base_cyclic_udp_->Refresh(command);
+
+    // Debug: print commanded positions at ~1 Hz
+    if (cmd_frame_id_ % 1000 == 0) {
+      std::string dbg = "write() positions (deg):";
+      for (size_t i = 0; i < actuator_count_; ++i) {
+        dbg += " J" + std::to_string(i) + "=" +
+               std::to_string(joint_positions_cmd_[i] * 180.0 / M_PI);
+      }
+      RCLCPP_INFO(LOGGER, "%s", dbg.c_str());
+    }
   }
   catch (const Kinova::Api::KDetailedException &e) {
     std::string error_msg = e.what();
