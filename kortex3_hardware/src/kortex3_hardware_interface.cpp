@@ -428,6 +428,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       // initial command so write() holds position until a controller takes over.
       if (sync == 0) {
         for (size_t i = 0; i < actuator_count_ && i < (size_t)fb.actuators_size(); ++i) {
+          RCLCPP_DEBUG(LOGGER, "  Act %d: %.3f deg\n", i, fb.actuators(i).position());
           joint_positions_cmd_[i] = fb.actuators(i).position() * M_PI / 180.0;
         }
       }
@@ -528,8 +529,8 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
     if (base_mqtt_)
     {
       // Exit low-level servoing before stopping — must be done while connections are open.
-      set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-      change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+      // set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+      // change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     }
     if (session_udp_)
     {
@@ -962,6 +963,21 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     command.set_frame_id(cmd_frame_id_++);
 
     for (size_t i = 0; i < actuator_count_; ++i) {
+
+      double cmd = joint_positions_cmd_[i];
+      double max_velocity = 0.0524; // rad/s
+      double dt = 0.01; // 10ms cycle time @ 100Hz
+      double max_position_increment = 3; // rad
+      double delta = joint_positions_cmd_[i] - joint_positions_[i];
+      double direction = (delta >= 0.0) ? 1.0 : -1.0;
+
+      if (delta > max_position_increment) {
+        // Clamp the position command
+        cmd = joint_positions_[i] + direction * max_position_increment;
+      } 
+      
+      joint_positions_cmd_[i] = cmd;
+
       auto* act = command.add_actuators();
       act->set_flags(0);
       act->set_position(static_cast<float>(joint_positions_cmd_[i] * 180.0 / M_PI));
@@ -970,7 +986,7 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     base_cyclic_udp_->Refresh(command);
 
     // Debug: print commanded positions at ~1 Hz
-    if (cmd_frame_id_ % 1000 == 0) {
+    if (true) {
       std::string dbg = "write() positions (deg):";
       for (size_t i = 0; i < actuator_count_; ++i) {
         dbg += " J" + std::to_string(i) + "=" +
