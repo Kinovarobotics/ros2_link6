@@ -7,6 +7,10 @@
     robot_ip
     username:=admin
     password:=admin
+    port
+    port_realtime
+    session_inactivity_timeout_ms
+    connection_inactivity_timeout_ms
     use_internal_bus_gripper_comm:=false
     gripper
     gripper_joint_name:=''
@@ -35,10 +39,14 @@
         </xacro:if>
         <xacro:unless value="${use_fake_hardware or sim_gazebo}">
           <xacro:unless value="${moveit_active}">
-            <plugin>kortex3_driver/Kortex3HardwareInterface</plugin>
+            <plugin>kortex3_driver/KortexHardwareInterface</plugin>
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>
+            <param name="port">${port}</param>
+            <param name="port_realtime">${port_realtime}</param>
+            <param name="session_inactivity_timeout_ms">${session_inactivity_timeout_ms}</param>
+            <param name="connection_inactivity_timeout_ms">${connection_inactivity_timeout_ms}</param>
             <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
             <param name="gripper">${gripper}</param>
             <param name="gripper_joint_name">${prefix}${gripper_joint_name}</param>
@@ -48,10 +56,14 @@
           </xacro:unless>
         </xacro:unless>
         <xacro:if value="${moveit_active}">
-          <plugin>kortex3_driver/Kortex3HardwareInterface</plugin>
+          <plugin>kortex3_driver/KortexHardwareInterface</plugin>
           <param name="robot_ip">${robot_ip}</param>
           <param name="username">${username}</param>
           <param name="password">${password}</param>
+          <param name="port">${port}</param>
+          <param name="port_realtime">${port_realtime}</param>
+          <param name="session_inactivity_timeout_ms">${session_inactivity_timeout_ms}</param>
+          <param name="connection_inactivity_timeout_ms">${connection_inactivity_timeout_ms}</param>
           <param name="use_internal_bus_gripper_comm">${use_internal_bus_gripper_comm}</param>
           <param name="gripper">${gripper}</param>
           <param name="gripper_joint_name">${prefix}${gripper_joint_name}</param>
@@ -157,22 +169,22 @@
           <xacro:if value="${use_internal_bus_gripper_comm}">
 
             <!-- Gripper A joint (only if gripper_joint_name is defined and not empty) -->
-            <xacro:unless value="${gripper_joint_name == '' or gripper_joint_name == None}">
+            <!-- <xacro:unless value="${gripper_joint_name == '' or gripper_joint_name == None}">
               <joint name="${prefix}${gripper_joint_name}">
                 <command_interface name="position" />
                 <state_interface name="position"/>
                 <state_interface name="velocity"/>
               </joint>
-            </xacro:unless>
+            </xacro:unless> -->
 
             <!-- Gripper B joint (only if gripper_b_joint_name is defined and not empty) -->
-            <xacro:unless value="${gripper_b_joint_name == '' or gripper_b_joint_name == None}">
+            <!-- <xacro:unless value="${gripper_b_joint_name == '' or gripper_b_joint_name == None}">
               <joint name="${prefix}${gripper_b_joint_name}">
                 <command_interface name="position" />
                 <state_interface name="position"/>
                 <state_interface name="velocity"/>
               </joint>
-            </xacro:unless>
+            </xacro:unless> -->
           </xacro:if>
         </xacro:unless>
       </xacro:unless>

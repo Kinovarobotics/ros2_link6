@@ -1,0 +1,9 @@
+<library path="kortex_hardware_interface_jog_mode">
+    <class name="kortex3_driver/KortexHardwareInterfaceJogMode"
+           type="kortex3_driver::KortexHardwareInterfaceJogMode"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            Hardware interface for Kortex 3 (Link6) robots using speed commands in Jog mode and UDP for feedback
+        </description>
+    </class>
+</library>

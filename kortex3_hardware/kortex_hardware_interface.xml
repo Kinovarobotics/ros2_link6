@@ -1,0 +1,9 @@
+<library path="kortex_hardware_interface">
+    <class name="kortex3_driver/KortexHardwareInterface"
+           type="kortex3_driver::KortexHardwareInterface"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            Hardware interface for Kortex 3 (Link6) robots using MQTT for commands and UDP for feedback
+        </description>
+    </class>
+</library>

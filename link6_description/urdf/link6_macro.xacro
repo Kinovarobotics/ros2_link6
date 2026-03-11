@@ -8,6 +8,10 @@
     robot_ip
     username:=admin
     password:=admin
+    port=1883
+    port_realtime=10001
+    session_inactivity_timeout_ms=60000
+    connection_inactivity_timeout_ms=2000
     use_internal_bus_gripper_comm:=false
     gripper
     gripper_joint_name:=''
@@ -63,6 +67,10 @@
       robot_ip="${robot_ip}"
       username="${username}"
       password="${password}"
+      port="${port}"
+      port_realtime="${port_realtime}"
+      session_inactivity_timeout_ms="${session_inactivity_timeout_ms}"
+      connection_inactivity_timeout_ms="${connection_inactivity_timeout_ms}"
       use_internal_bus_gripper_comm="${use_internal_bus_gripper_comm}"
       gripper="${gripper}"
       gripper_joint_name="${gripper_joint_name}"

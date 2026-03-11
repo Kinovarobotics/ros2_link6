@@ -5,7 +5,7 @@
     <xacro:arg name="robot_ip" default="192.168.1.10" />
     <xacro:arg name="username" default="admin" />
     <xacro:arg name="password" default="admin" />
-    <xacro:arg name="port" default="10000" />
+    <xacro:arg name="port" default="1883" />
     <xacro:arg name="port_realtime" default="10001" />
     <xacro:arg name="session_inactivity_timeout_ms" default="60000" />
     <xacro:arg name="connection_inactivity_timeout_ms" default="2000" />
@@ -38,6 +38,10 @@
         robot_ip="$(arg robot_ip)"
         username="$(arg username)"
         password="$(arg password)"
+        port="$(arg port)"
+        port_realtime="$(arg port_realtime)"
+        session_inactivity_timeout_ms="$(arg session_inactivity_timeout_ms)"
+        connection_inactivity_timeout_ms="$(arg connection_inactivity_timeout_ms)"
         use_internal_bus_gripper_comm="$(arg use_internal_bus_gripper_comm)"
         gripper="$(arg gripper)"
         gripper_joint_name="$(arg gripper_joint_name)"
