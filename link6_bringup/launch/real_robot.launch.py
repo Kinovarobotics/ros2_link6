@@ -107,7 +107,6 @@ def launch_setup(context, *args, **kwargs):
         executable = "spawner",
         arguments  = [
             "joint_trajectory_controller",
-            "--inactive",
             "--param-file", controller_config,
             "--controller-manager", "/controller_manager"
         ],
@@ -127,7 +126,7 @@ def launch_setup(context, *args, **kwargs):
     cartesian_motion_controller_spawner = Node(
             package    = "controller_manager",
             executable = "spawner",
-            arguments=["cartesian_motion_controller", "--activate", "--controller-manager-timeout", "300"],
+            arguments=["cartesian_motion_controller", "--inactive", "--controller-manager-timeout", "300"],
             output     = "screen",
         )
 

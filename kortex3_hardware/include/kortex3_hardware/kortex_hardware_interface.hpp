@@ -165,6 +165,8 @@ private:
   void sendJointSpeedsCommand();
 
   int base_command_frame_id_;
+
+  bool rampInit();
 };
 
 }  // namespace kortex3_driver

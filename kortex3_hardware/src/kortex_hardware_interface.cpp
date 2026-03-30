@@ -59,6 +59,7 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
 
   info_ = info;
   // The robot's IP address.
+  // TODO: Check if parameters need to be member properties or can be local variables
   robot_ip_ = info_.hardware_parameters["robot_ip"];
   if (robot_ip_.empty())
   {
@@ -109,7 +110,7 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   {
     RCLCPP_INFO(LOGGER, "Realtime port used '%d'", port_realtime_);
   }
-
+  // TODO: Add a description for the parameter
   session_inactivity_timeout_ = std::stoi(info_.hardware_parameters["session_inactivity_timeout_ms"]);
   if (session_inactivity_timeout_ <= 0)
   {
@@ -120,6 +121,7 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   {
     RCLCPP_INFO(LOGGER, "Session inactivity timeout is '%d'", session_inactivity_timeout_);
   }
+  // TODO: Add a description for the parameer
   connection_inactivity_timeout_ = std::stoi(info_.hardware_parameters["connection_inactivity_timeout_ms"]);
   if (connection_inactivity_timeout_ <= 0)
   {
@@ -145,6 +147,10 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   // RCLCPP_INFO(LOGGER, "Actuator count reported by robot is '%lu'", actuator_count_);
 
   // Initialize state and command vectors
+
+  // TODO: Finish this comment:
+  // If this flag is set, the controller tries to read the values from the command interfaces on activation. If they have real numeric values, those will be used instead of state interfaces. Therefore it is important set command interfaces to NaN (i.e., std::numeric_limits<double>::quiet_NaN()) or state values when the hardware is started.
+  // https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/parameters.html
   joint_velocities_cmd_.resize(actuator_count_, 0.0);
   joint_positions_cmd_.resize(actuator_count_, 0.0);
   joint_positions_.resize(actuator_count_, 0.0);
@@ -204,7 +210,7 @@ KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_s
   {
     /* code */
 
-    // 1. Create MQTT connection for low-frequency commands.
+    // Create MQTT connection for low-frequency commands.
     router_mqtt_ = std::make_shared<k_api::RouterMQTT>(robot_ip_, mqtt_port_);
     router_mqtt_->SpinProcess(std::chrono::milliseconds{ 1 });
     session_mqtt_ = std::make_shared<k_api::Session::SessionClient>(router_mqtt_.get());
@@ -229,6 +235,9 @@ KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_s
     session_udp_->CreateSession(session_info);
     RCLCPP_INFO(LOGGER, "Session created");
 
+    // Wait for session to establish
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
     // program_runner_ = std::make_shared<k_api::ProgramRunner::ProgramRunnerClient>(router_mqtt_.get());
     // protection_zone_ = std::make_shared<k_api::ProtectionZone::ProtectionZoneClient>(router_mqtt_.get());
 
@@ -251,8 +260,9 @@ KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_s
       base_command_.add_actuators()->set_position(base_feedback.actuators(i).position());
     }
 
-
     feedback_ = base_cyclic_->RefreshFeedback();
+
+    // rampInit();
 
     RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -656,8 +666,8 @@ hardware_interface::return_type KortexHardwareInterface::perform_command_mode_sw
 
   if (start_low_level_control_mode_)
   {
+    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-    change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
     joint_velocity_control_mode_running_ = false;
     twist_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
@@ -853,6 +863,18 @@ void KortexHardwareInterface::change_operating_mode(const k_api::Common::Operati
   {
     RCLCPP_ERROR(LOGGER, "Failed to change operating mode: %s", ex.what());
   }
+  catch (std::runtime_error& ex_runtime)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Runtime error: " << ex_runtime.what());
+  }
+  catch (std::future_error& ex_future)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Future error: " << ex_future.what());
+  }
+  catch (std::exception& ex_std)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Standard exception: " << ex_std.what());
+  }
 }
 
 void KortexHardwareInterface::set_servoing_mode(const k_api::Base::ServoingMode& mode)
@@ -941,10 +963,9 @@ void KortexHardwareInterface::sendJointPositionCommands()
   //   base_command_.mutable_actuators(static_cast<int>(i))->set_command_id(base_command_.frame_id());
   // }
 
-
-  base_command_frame_id_ = base_command_frame_id_ + 1; 
+  base_command_frame_id_ = base_command_frame_id_ + 1;
   if (base_command_frame_id_ > 65535)
-    base_command_frame_id_ = 0; 
+    base_command_frame_id_ = 0;
 
   k_api::BaseCyclic::Command command;
   command.set_frame_id(base_command_frame_id_);
@@ -996,6 +1017,363 @@ void KortexHardwareInterface::sendJointPositionCommands()
 //   k_api_twist_->set_angular_z(static_cast<float>(twist_cmd_[5]));
 //   base_.SendTwistCommand(k_api_twist_command_);
 // }
+
+bool KortexHardwareInterface::rampInit()
+{
+  uint32_t moving_actuator = 0;
+  bool clockwise = true;
+  float velocity_deg_per_sec = 3.0f;
+  const float amplitude_deg = 10.0f;              // Always move 10 degrees
+  const float acceleration_deg_per_sec2 = 25.0f;  // Accel/decel at 25 deg/s^2
+  const float deceleration_deg_per_sec2 = 25.0f;
+
+  RCLCPP_INFO(LOGGER, "Starting cyclic loop test (trapezoidal velocity profile):");
+  RCLCPP_INFO(LOGGER, "  Servoing mode: %s (%u)", k_api::Base::ServoingMode_Name(arm_mode_).c_str(), arm_mode_);
+  RCLCPP_INFO(LOGGER, "  Actuator: %u", moving_actuator);
+  RCLCPP_INFO(LOGGER, "  Direction: %s", clockwise ? "clockwise" : "counter-clockwise");
+  RCLCPP_INFO(LOGGER, "  Target velocity: %.2f deg/s", velocity_deg_per_sec);
+  RCLCPP_INFO(LOGGER, "  Total angle: %.2f deg", amplitude_deg);
+  RCLCPP_INFO(LOGGER, "  Fixed acceleration: %.2f deg/s^2", acceleration_deg_per_sec2);
+  RCLCPP_INFO(LOGGER, "  Fixed deceleration: %.2f deg/s^2", deceleration_deg_per_sec2);
+
+  // Get initial feedback to establish starting positions
+  // Send multiple synchronization cycles to ensure stable communication
+  RCLCPP_INFO(LOGGER, "Synchronizing position (sending hold commands)...");
+  Kinova::Api::BaseCyclic::Feedback initial_feedback;
+
+  // Send 30 hold-position cycles to synchronize.
+  // IMPORTANT: Send hold commands from cycle 0, not just RefreshFeedback.
+  // In LOW_LEVEL mode the actuator needs a BaseCyclic position setpoint immediately
+  // after mode transition. Delaying commands (RefreshFeedback-only cycles) leaves
+  // the actuator without a setpoint, causing Code 50030 when the first Refresh()
+  // command eventually arrives.
+  for (int sync_cycle = 0; sync_cycle < 30; sync_cycle++)
+  {
+    try
+    {
+      // Get current feedback first, then command that exact position.
+      Kinova::Api::BaseCyclic::Feedback current_sync_feedback;
+      current_sync_feedback = base_cyclic_->RefreshFeedback();
+
+      // Log initial positions on first cycle
+      if (sync_cycle == 0)
+      {
+        RCLCPP_INFO(LOGGER, "Initial positions captured (cycle 0):");
+        for (int i = 0; i < current_sync_feedback.actuators_size(); i++)
+        {
+          RCLCPP_INFO(LOGGER, "  Act %d: %.3f deg", i, current_sync_feedback.actuators(i).position());
+        }
+      }
+
+      // Build and send hold command using the position we JUST received
+      Kinova::Api::BaseCyclic::Command hold_cmd;
+      hold_cmd.set_frame_id(sync_cycle);
+      for (int i = 0; i < current_sync_feedback.actuators_size(); i++)
+      {
+        auto* actuator = hold_cmd.add_actuators();
+        actuator->set_flags(0);
+        actuator->set_position(current_sync_feedback.actuators(i).position());
+        actuator->set_velocity(0.0f);
+      }
+
+      if (sync_cycle == 0)
+      {
+        RCLCPP_INFO(LOGGER, "First hold commands sent (cycle 0) using fresh feedback positions");
+      }
+
+      current_sync_feedback = base_cyclic_->Refresh(hold_cmd);
+
+      // Update feedback for next cycle
+      initial_feedback = current_sync_feedback;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));  // 1ms between sync cycles
+    }
+    catch (Kinova::Api::KDetailedException& ex)
+    {
+      RCLCPP_ERROR(LOGGER, "Error during synchronization cycle %d: %s", sync_cycle, ex.what());
+      return false;
+    }
+  }
+  RCLCPP_INFO(LOGGER, "Position synchronized");
+
+  // Store initial joint positions and initialize target positions
+  std::vector<float> initial_positions;
+  std::vector<float> target_positions;  // Track commanded positions independently
+  RCLCPP_INFO(LOGGER, "Initial joint positions:");
+  if (moving_actuator >= (uint32_t)initial_feedback.actuators_size())
+  {
+    RCLCPP_ERROR(LOGGER, "Error: actuator_index %u out of range (robot has %d actuators, valid range: 0-%d)", moving_actuator,
+           initial_feedback.actuators_size(), initial_feedback.actuators_size() - 1);
+    return false;
+  }
+
+  for (uint32_t i = 0; i < initial_feedback.actuators_size(); i++)
+  {
+    float pos = initial_feedback.actuators(i).position();
+    initial_positions.push_back(pos);
+    target_positions.push_back(pos);  // Start at current position
+    if (i == moving_actuator)
+    {
+      RCLCPP_INFO(LOGGER, "  Joint %u: %.2f deg", i, pos);
+    }
+  }
+
+  // Calculate trapezoidal (or triangular) profile parameters
+  const float direction = clockwise ? 1.0f : -1.0f;
+  const float total_angle_to_move = fabs(amplitude_deg);
+  const float accel = fabs(acceleration_deg_per_sec2);
+
+  // Clamp peak velocity to what is physically reachable within the given amplitude.
+  // If the requested velocity is too high, the profile becomes triangular (no constant
+  // velocity phase): the robot accelerates to the clamped peak then immediately decelerates.
+  const float max_reachable_velocity = sqrtf(accel * total_angle_to_move);
+  float target_velocity = fabs(velocity_deg_per_sec);
+  if (target_velocity > max_reachable_velocity)
+  {
+    RCLCPP_INFO(LOGGER, "  Note: Peak velocity clamped %.2f -> %.2f deg/s (triangular profile, amplitude too small)",
+           target_velocity, max_reachable_velocity);
+    target_velocity = max_reachable_velocity;
+  }
+
+  // Calculate time durations for each phase
+  const float accel_time = target_velocity / accel;
+  const float decel_time = accel_time;  // Symmetric profile
+
+  // Distance covered during acceleration and deceleration
+  const float accel_distance = 0.5f * accel * accel_time * accel_time;  // d = 0.5*a*t²
+  const float decel_distance = accel_distance;
+  const float const_velocity_distance = total_angle_to_move - accel_distance - decel_distance;
+  const float const_time = (const_velocity_distance > 0.0f) ? (const_velocity_distance / target_velocity) : 0.0f;
+
+  RCLCPP_INFO(LOGGER, "  Accel time: %.2f s (distance: %.2f deg)", accel_time, accel_distance);
+  RCLCPP_INFO(LOGGER, "  Const velocity time: %.2f s (distance: %.2f deg)", const_time, const_velocity_distance);
+  RCLCPP_INFO(LOGGER, "  Decel time: %.2f s (distance: %.2f deg)", decel_time, decel_distance);
+
+  // Timing parameters
+  const uint32_t CYCLE_TIME_US = 1000;  // 1ms = 1kHz target
+  const float WARMUP_TIME_SEC = 0.5f;   // 500ms warmup (increased for stability after brake release)
+
+  RCLCPP_INFO(LOGGER, "Starting cyclic loop at 1kHz (1ms per cycle)...");
+  RCLCPP_INFO(LOGGER, "Warmup period: %.0f ms", WARMUP_TIME_SEC * 1000.0f);
+  RCLCPP_INFO(LOGGER, "Will stop automatically 1s after motion completes");
+
+  uint32_t cycle_count = 0;
+  bool running = true;
+  auto test_start_time = std::chrono::high_resolution_clock::now();
+  float last_print_time = 0.0f;
+  float angle_moved = 0.0f;           // Track cumulative angle moved
+  uint32_t complete_hold_cycles = 0;  // Cycles spent holding after motion complete
+
+  // Store current feedback for next cycle
+  Kinova::Api::BaseCyclic::Feedback current_feedback = initial_feedback;
+
+  while (running)
+  {
+    auto cycle_start = std::chrono::high_resolution_clock::now();
+
+    // Calculate actual elapsed time
+    float elapsed_time_sec =
+        std::chrono::duration_cast<std::chrono::microseconds>(cycle_start - test_start_time).count() / 1000000.0f;
+
+    // Prepare command
+    Kinova::Api::BaseCyclic::Command command;
+    command.set_frame_id(cycle_count);
+
+    // Calculate target velocity and acceleration based on time (trapezoidal profile)
+    // Use angle_moved only as stopping condition
+    float current_velocity;
+    float current_accel;                                     // Current acceleration for position calculation
+    float motion_time = elapsed_time_sec - WARMUP_TIME_SEC;  // Time since motion started
+
+    if (elapsed_time_sec < WARMUP_TIME_SEC)
+    {
+      // Warmup phase - no motion
+      current_velocity = 0.0f;
+      current_accel = 0.0f;
+    }
+    else if (motion_time >= 0.0f && motion_time < 0.001f)
+    {
+      // Just started motion - print trace
+      RCLCPP_INFO(LOGGER, "*** MOTION STARTED - Robot should be moving now! ***");
+      RCLCPP_INFO(LOGGER, "  Time: %.3f s, Angle moved: %.2f deg", elapsed_time_sec, angle_moved);
+      current_velocity = accel * motion_time;
+      current_accel = accel;
+    }
+    else if (angle_moved >= total_angle_to_move)
+    {
+      // Motion complete - hold briefly then exit
+      current_velocity = 0.0f;
+      current_accel = 0.0f;
+      complete_hold_cycles++;
+      if (complete_hold_cycles >= 1000)  // 1 second hold then exit
+      {
+        running = false;
+      }
+    }
+    else if (motion_time < accel_time)
+    {
+      // Acceleration phase: v = a*t
+      current_velocity = accel * motion_time;
+      current_accel = accel;  // Positive acceleration
+    }
+    else if (motion_time < (accel_time + const_time))
+    {
+      // Constant velocity phase
+      current_velocity = target_velocity;
+      current_accel = 0.0f;  // No acceleration
+    }
+    else if (motion_time < (accel_time + const_time + decel_time))
+    {
+      // Deceleration phase: v = v_target - a*(t - t_decel_start)
+      float decel_elapsed = motion_time - accel_time - const_time;
+      current_velocity = target_velocity - accel * decel_elapsed;
+      if (current_velocity < 0.0f)
+        current_velocity = 0.0f;
+      current_accel = -accel;  // Negative acceleration (deceleration)
+    }
+    else
+    {
+      // Time-based motion complete - hold briefly then exit
+      current_velocity = 0.0f;
+      current_accel = 0.0f;
+      complete_hold_cycles++;
+      if (complete_hold_cycles >= 1000)  // 1 second hold then exit
+      {
+        running = false;
+      }
+    }
+
+    // Note: TCP velocity limiting is now handled by Kontrol's energy-based limiting
+    // in LowLevelPassthroughMode. No testclient-side limiting needed.
+
+    // Build commands for all actuators
+    // Only the first num_actuators will move, rest hold position
+    for (uint32_t i = 0; i < current_feedback.actuators_size(); i++)
+    {
+      auto* actuator = command.add_actuators();
+
+      // Set flags to 0 (no special flags needed for LOW_LEVEL mode)
+      actuator->set_flags(0);
+
+      if (i == moving_actuator)
+      {
+        // This actuator should move
+        // Compute position increment using velocity-only: Δx = v*Δt
+        // (Removed acceleration term to prevent tracking errors)
+        const float dt = 0.001f;  // 1ms cycle time @ 1kHz
+        float position_increment = direction * current_velocity * dt;
+
+        // Update target position for this actuator
+        target_positions[i] += position_increment;
+
+        // Set position and velocity commands
+        actuator->set_position(target_positions[i]);
+        actuator->set_velocity(fabs(current_velocity));
+
+        angle_moved += fabs(position_increment);
+      }
+      else
+      {
+        // This actuator should hold position (use tracked target, not feedback)
+        actuator->set_position(target_positions[i]);
+        actuator->set_velocity(0.0f);
+      }
+    }
+
+    // Send command and get feedback
+    try
+    {
+      Kinova::Api::BaseCyclic::Feedback new_feedback = base_cyclic_->Refresh(command);
+      current_feedback = new_feedback;  // Store for next cycle
+
+      // Print status every second
+      if (elapsed_time_sec - last_print_time >= 1.0f)
+      {
+        auto cycle_end = std::chrono::high_resolution_clock::now();
+        auto cycle_time_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
+        float cycle_rate_hz = cycle_count / elapsed_time_sec;
+
+        // Determine current phase based on time
+        const char* phase = "warmup";
+        if (elapsed_time_sec >= WARMUP_TIME_SEC)
+        {
+          float motion_time_status = elapsed_time_sec - WARMUP_TIME_SEC;
+          if (angle_moved >= total_angle_to_move || motion_time_status >= (accel_time + const_time + decel_time))
+          {
+            phase = "complete";
+          }
+          else if (motion_time_status < accel_time)
+          {
+            phase = "accel";
+          }
+          else if (motion_time_status < (accel_time + const_time))
+          {
+            phase = "const";
+          }
+          else
+          {
+            phase = "decel";
+          }
+        }
+
+        RCLCPP_INFO(LOGGER, 
+            "Time: %.1fs [%s], Cycles: %u (%.0f Hz), Cycle: %ld us, Moved: %.2f/%.2f deg, J%u: %.2f deg, V%u: %.2f "
+            "deg/s",
+            elapsed_time_sec, phase, cycle_count, cycle_rate_hz, cycle_time_us, angle_moved, total_angle_to_move,
+            moving_actuator,
+            current_feedback.actuators_size() > (int)moving_actuator ?
+                current_feedback.actuators(moving_actuator).position() :
+                0.0f,
+            moving_actuator,
+            current_feedback.actuators_size() > (int)moving_actuator ?
+                current_feedback.actuators(moving_actuator).velocity() :
+                0.0f);
+
+        last_print_time = elapsed_time_sec;
+
+        // Check for faults
+        if (current_feedback.base().fault_bank_a() != 0 || current_feedback.base().fault_bank_b() != 0)
+        {
+          RCLCPP_INFO(LOGGER, "FAULT DETECTED! Bank A: 0x%08X, Bank B: 0x%08X", current_feedback.base().fault_bank_a(),
+                 current_feedback.base().fault_bank_b());
+          running = false;
+        }
+      }
+    }
+    catch (Kinova::Api::KDetailedException& ex)
+    {
+      RCLCPP_ERROR(LOGGER, "Error during cyclic loop (time %.2fs, cycle %u): %s", elapsed_time_sec, cycle_count, ex.what());
+      running = false;
+      break;
+    }
+
+    cycle_count++;
+
+    // Busy-wait to maintain 1kHz rate (1ms per cycle)
+    auto cycle_end = std::chrono::high_resolution_clock::now();
+    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
+
+    // Spin until 1ms has elapsed from cycle start
+    while (elapsed_us < CYCLE_TIME_US)
+    {
+      cycle_end = std::chrono::high_resolution_clock::now();
+      elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
+    }
+  }
+
+  auto final_time = std::chrono::high_resolution_clock::now();
+  float total_time_sec =
+      std::chrono::duration_cast<std::chrono::microseconds>(final_time - test_start_time).count() / 1000000.0f;
+  float avg_cycle_rate_hz = cycle_count / total_time_sec;
+  float avg_cycle_time_us = (total_time_sec * 1000000.0f) / cycle_count;
+
+  RCLCPP_INFO(LOGGER, "Cyclic loop completed:");
+  RCLCPP_INFO(LOGGER, "  Total time: %.2f seconds", total_time_sec);
+  RCLCPP_INFO(LOGGER, "  Total cycles: %u", cycle_count);
+  RCLCPP_INFO(LOGGER, "  Average rate: %.0f Hz", avg_cycle_rate_hz);
+  RCLCPP_INFO(LOGGER, "  Average cycle time: %.0f us", avg_cycle_time_us);
+
+  return true;
+}
 
 }  // namespace kortex3_driver
 
