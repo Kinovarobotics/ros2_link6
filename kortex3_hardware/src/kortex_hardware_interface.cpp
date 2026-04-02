@@ -16,6 +16,7 @@ KortexHardwareInterface::KortexHardwareInterface()
   : mode_selection_(k_api::Common::ModeSelection())
   , servoing_mode_info_(k_api::Base::ServoingModeInformation())
   , actuator_count_(6)  // Default, updated from robot during activation.
+  , k_api_twist_(nullptr)
   , stop_low_level_control_mode_(false)
   , stop_joint_velocity_control_mode_(false)
   , stop_twist_control_mode_(false)
@@ -34,19 +35,6 @@ KortexHardwareInterface::KortexHardwareInterface()
     RCLCPP_ERROR(LOGGER, "Error setting severity: %s", rcutils_get_error_string().str);
     rcutils_reset_error();
   }
-
-  // Initialize the Kortex API connection objects
-
-  // MQTT
-
-  // UDP
-  transport_udp_ = std::make_unique<k_api::TransportClientUdp>();
-  router_udp_ = std::make_unique<k_api::RouterClient>(transport_udp_.get(), [](k_api::KError err) {
-    RCLCPP_ERROR(LOGGER, "UDP Router error: %s", err.toString().c_str());
-  });
-  session_udp_ = std::make_unique<k_api::SessionManager>(router_udp_.get());
-
-  base_cyclic_ = std::make_shared<k_api::BaseCyclic::BaseCyclicClient>(router_udp_.get());
 }
 
 hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardware_interface::HardwareInfo& info)
@@ -59,7 +47,6 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
 
   info_ = info;
   // The robot's IP address.
-  // TODO: Check if parameters need to be member properties or can be local variables
   robot_ip_ = info_.hardware_parameters["robot_ip"];
   if (robot_ip_.empty())
   {
@@ -132,6 +119,7 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   {
     RCLCPP_INFO(LOGGER, "Connection inactivity timeout is '%d'", connection_inactivity_timeout_);
   }
+  // TODO: Load gripper parameters
   // gripper joint name
   // gripper_joint_name_ = info_.hardware_parameters["gripper_joint_name"];
   // if (gripper_joint_name_.empty())
@@ -143,50 +131,54 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   //   RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
   // }
 
-  // actuator_count_ = base_.GetActuatorCount().count();
-  // RCLCPP_INFO(LOGGER, "Actuator count reported by robot is '%lu'", actuator_count_);
+  // Check if expected command interfaces are present
+  for (const hardware_interface::ComponentInfo & joint : info_.joints)
+  {
+    if (!(joint.command_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
+          joint.command_interfaces[0].name == hardware_interface::HW_IF_VELOCITY))
+    {
+      RCLCPP_FATAL(
+        LOGGER, "Joint '%s' has %s command interface. Expected %s, or %s.", joint.name.c_str(),
+        joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION,
+        hardware_interface::HW_IF_VELOCITY);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    if (!(joint.state_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
+          joint.state_interfaces[0].name == hardware_interface::HW_IF_VELOCITY ||
+          joint.state_interfaces[0].name == hardware_interface::HW_IF_EFFORT))
+    {
+      RCLCPP_FATAL(
+        LOGGER, "Joint '%s' has %s state interface. Expected %s, %s, or %s.", joint.name.c_str(),
+        joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION,
+        hardware_interface::HW_IF_VELOCITY, hardware_interface::HW_IF_EFFORT);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
 
   // Initialize state and command vectors
+  actuator_count_ = info_.joints.size();
 
-  // TODO: Finish this comment:
-  // If this flag is set, the controller tries to read the values from the command interfaces on activation. If they have real numeric values, those will be used instead of state interfaces. Therefore it is important set command interfaces to NaN (i.e., std::numeric_limits<double>::quiet_NaN()) or state values when the hardware is started.
-  // https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/parameters.html
-  joint_velocities_cmd_.resize(actuator_count_, 0.0);
-  joint_positions_cmd_.resize(actuator_count_, 0.0);
-  joint_positions_.resize(actuator_count_, 0.0);
-  joint_velocities_.resize(actuator_count_, 0.0);
-  joint_torques_.resize(actuator_count_, 0.0);
+  // The command interfaces need to be set to Nan if the joint trajectory controller is operating in open loop
+  // See: https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/parameters.html
+  joint_positions_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
+  joint_velocities_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
+  joint_torques_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
+  joint_positions_cmd_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
+  joint_velocities_cmd_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
 
   // set size of the twist interface
   twist_cmd_.resize(6, 0.0);
 
-  // TODO: Verify that the URDF's joint count matches the expected count
-
-  // TODO: Check if expected command interfaces are present
-  // for (const hardware_interface::ComponentInfo & joint : info_.joints)
-  // {
-  //   if (!(joint.command_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
-  //         joint.command_interfaces[0].name == hardware_interface::HW_IF_VELOCITY ||
-  //         joint.command_interfaces[0].name == hardware_interface::HW_IF_EFFORT))
-  //   {
-  //     RCLCPP_FATAL(
-  //       LOGGER, "Joint '%s' has %s command interface. Expected %s, %s, or %s.", joint.name.c_str(),
-  //       joint.command_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION,
-  //       hardware_interface::HW_IF_VELOCITY, hardware_interface::HW_IF_EFFORT);
-  //     return CallbackReturn::ERROR;
-  //   }
-
-  //   if (!(joint.state_interfaces[0].name == hardware_interface::HW_IF_POSITION ||
-  //         joint.state_interfaces[0].name == hardware_interface::HW_IF_VELOCITY ||
-  //         joint.state_interfaces[0].name == hardware_interface::HW_IF_EFFORT))
-  //   {
-  //     RCLCPP_FATAL(
-  //       LOGGER, "Joint '%s' has %s state interface. Expected %s, %s, or %s.", joint.name.c_str(),
-  //       joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION,
-  //       hardware_interface::HW_IF_VELOCITY, hardware_interface::HW_IF_EFFORT);
-  //     return CallbackReturn::ERROR;
-  //   }
-  // }
+  // initialize kortex api twist commandd
+  {
+    k_api_twist_command_.set_reference_frame(k_api::Common::CARTESIAN_REFERENCE_FRAME_TOOL);
+    // command.set_duration = execute time (milliseconds) according to the api ->
+    // (not implemented yet)
+    // see: https://github.com/Kinovarobotics/kortex/blob/master/api_cpp/doc/markdown/messages/Base/TwistCommand.md
+    k_api_twist_command_.set_duration(0);
+    k_api_twist_ = k_api_twist_command_.mutable_twist();
+  }
 
   // TODO: Check and report if using internal bus for gripper
   // if (
@@ -201,154 +193,6 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn
-KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
-{
-  RCLCPP_INFO(LOGGER, "Activating Kortex3 Hardware Interface...");
-
-  try
-  {
-    /* code */
-
-    // Create MQTT connection for low-frequency commands.
-    router_mqtt_ = std::make_shared<k_api::RouterMQTT>(robot_ip_, mqtt_port_);
-    router_mqtt_->SpinProcess(std::chrono::milliseconds{ 1 });
-    session_mqtt_ = std::make_shared<k_api::Session::SessionClient>(router_mqtt_.get());
-
-    base_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
-
-    //
-
-    // Start connections
-    transport_udp_->connect(robot_ip_, port_realtime_);
-
-    // Set session data connection information
-    auto session_info = k_api::Session::CreateSessionInfo();
-    session_info.set_username(username_);
-    session_info.set_password(password_);
-    session_info.set_session_inactivity_timeout(session_inactivity_timeout_);
-    session_info.set_connection_inactivity_timeout(connection_inactivity_timeout_);
-
-    // Session manager service wrapper
-    RCLCPP_INFO(LOGGER, "Creating session for communication");
-    session_mqtt_->CreateSession(session_info);
-    session_udp_->CreateSession(session_info);
-    RCLCPP_INFO(LOGGER, "Session created");
-
-    // Wait for session to establish
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-
-    // program_runner_ = std::make_shared<k_api::ProgramRunner::ProgramRunnerClient>(router_mqtt_.get());
-    // protection_zone_ = std::make_shared<k_api::ProtectionZone::ProtectionZoneClient>(router_mqtt_.get());
-
-    // Single level servoing and Monitored Stop on startup
-    set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
-
-    // change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
-    // set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-
-    // last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
-    // set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-
-    // first read
-    auto base_feedback = base_cyclic_->RefreshFeedback();
-
-    // Add each actuator to the base_command_ and set the command to its current position
-    for (std::size_t i = 0; i < actuator_count_; i++)
-    {
-      base_command_.add_actuators()->set_position(base_feedback.actuators(i).position());
-    }
-
-    feedback_ = base_cyclic_->RefreshFeedback();
-
-    // rampInit();
-
-    RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
-    return hardware_interface::CallbackReturn::SUCCESS;
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_ERROR(LOGGER, "Exception during activation: %s", ex.what());
-    return hardware_interface::CallbackReturn::ERROR;
-  }
-
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-hardware_interface::CallbackReturn
-KortexHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
-{
-  RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
-
-  // 1. set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
-  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
-
-  // 2. Close API sessions
-  if (session_udp_)
-  {
-    try
-    {
-      session_udp_->CloseSession();
-    }
-    catch (const std::exception& e)
-    {
-      RCLCPP_ERROR(LOGGER, "Error closing UDP session: %s", e.what());
-    }
-  }
-  if (session_mqtt_)
-  {
-    try
-    {
-      session_mqtt_->CloseSession();
-    }
-    catch (const std::exception& e)
-    {
-      RCLCPP_ERROR(LOGGER, "Error closing MQTT session: %s", e.what());
-    }
-  }
-
-  // 3. Deactivate the router and cleanly disconnect from the transport object
-  if (router_mqtt_)
-  {
-    // router_mqtt_->SetActivationStatus(false);
-    router_mqtt_->SpinProcess(std::chrono::milliseconds{ 0 });
-  }
-  if (router_udp_)
-  {
-    router_udp_->SetActivationStatus(false);
-  }
-  if (transport_udp_)
-  {
-    try
-    {
-      transport_udp_->disconnect();
-    }
-    catch (const std::exception& e)
-    {
-      RCLCPP_ERROR(LOGGER, "Error disconnecting UDP transport: %s", e.what());
-    }
-  }
-
-  // 4. Shutdown grippers
-  // if (!gripper_a_.joint_name_.empty())
-  // {
-  //   gripper_a_.shutdown(gripper_mtx_);
-  // }
-  // if (!gripper_b_.joint_name_.empty())
-  // {
-  //   gripper_b_.shutdown(gripper_mtx_);
-  // }
-
-  // 5. Memory handling
-  // delete k_api_twist_;
-  // delete gripper_motor_command_;
-
-  RCLCPP_INFO(LOGGER, "Kortex Hardware Interface deactivated.");
-  return hardware_interface::CallbackReturn::SUCCESS;
-}
-
 std::vector<hardware_interface::StateInterface> KortexHardwareInterface::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
@@ -356,7 +200,8 @@ std::vector<hardware_interface::StateInterface> KortexHardwareInterface::export_
 
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
-    // RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
+    RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
+    // TODO: Export gripper interfaces
     // if (info_.joints[i].name == gripper_a_.joint_name_)
     // {
     //   state_interfaces.emplace_back(hardware_interface::StateInterface(
@@ -383,8 +228,8 @@ std::vector<hardware_interface::StateInterface> KortexHardwareInterface::export_
         arm_joint_names[i], hardware_interface::HW_IF_POSITION, &joint_positions_[i]));
     state_interfaces.emplace_back(hardware_interface::StateInterface(
         arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_[i]));
-    state_interfaces.emplace_back(
-        hardware_interface::StateInterface(arm_joint_names[i], hardware_interface::HW_IF_EFFORT, &joint_torques_[i]));
+    state_interfaces.emplace_back(hardware_interface::StateInterface(
+        arm_joint_names[i], hardware_interface::HW_IF_EFFORT, &joint_torques_[i]));
   }
 
   return state_interfaces;
@@ -397,6 +242,7 @@ std::vector<hardware_interface::CommandInterface> KortexHardwareInterface::expor
 
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
+    // TODO: Export gripper interfaces
     // if (info_.joints[i].name == gripper_a_.joint_name_)
     // {
     //   command_interfaces.emplace_back(hardware_interface::CommandInterface(
@@ -422,18 +268,18 @@ std::vector<hardware_interface::CommandInterface> KortexHardwareInterface::expor
   }
 
   // register twist command interfaces
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.linear.x", &twist_cmd_[0]));
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.linear.y", &twist_cmd_[1]));
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.linear.z", &twist_cmd_[2]));
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.angular.x", &twist_cmd_[3]));
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.angular.y", &twist_cmd_[4]));
-  // command_interfaces.emplace_back(
-  //   hardware_interface::CommandInterface("tcp", "twist.angular.z", &twist_cmd_[5]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.linear.x", &twist_cmd_[0]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.linear.y", &twist_cmd_[1]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.linear.z", &twist_cmd_[2]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.angular.x", &twist_cmd_[3]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.angular.y", &twist_cmd_[4]));
+  command_interfaces.emplace_back(
+    hardware_interface::CommandInterface("tcp", "twist.angular.z", &twist_cmd_[5]));
 
   return command_interfaces;
 }
@@ -460,6 +306,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   {
     for (auto& joint : info_.joints)
     {
+      // TODO: Include gripper joints
       // if (
       //   key == joint.name + "/" + hardware_interface::HW_IF_POSITION &&
       //   joint.name == gripper_joint_name_)
@@ -483,10 +330,9 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
       }
       if (key == joint.name + "/" + hardware_interface::HW_IF_EFFORT)
       {
-        continue;
-        // not supporting effort command interface
-        //              start_modes_.emplace_back(hardware_interface::HW_IF_EFFORT);
+        // Effort command interface is not supported
         RCLCPP_ERROR(LOGGER, "KortexHardwareInterface does not support effort command interface!");
+        continue;
       }
     }
     if ((key == "tcp/twist.linear.x") || (key == "tcp/twist.linear.y") || (key == "tcp/twist.linear.z") ||
@@ -494,6 +340,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
     {
       stop_modes_.emplace_back(StopStartInterface::STOP_TWIST);
     }
+    // TODO: Include fault controller joints
     // if ((key == "reset_fault/command") || (key == "reset_fault/async_success"))
     // {
     //   stop_modes_.emplace_back(StopStartInterface::STOP_FAULT_CTRL);
@@ -506,6 +353,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   {
     for (auto& joint : info_.joints)
     {
+      // TODO: Include gripper joints
       // if (
       //   key == joint.name + "/" + hardware_interface::HW_IF_POSITION &&
       //   joint.name == gripper_joint_name_)
@@ -529,10 +377,9 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
       }
       if (key == joint.name + "/" + hardware_interface::HW_IF_EFFORT)
       {
+        // Effort command interface is not supported
+        RCLCPP_ERROR(LOGGER, "KortexHardwareInterface does not support effort command interface!");
         continue;
-        RCLCPP_ERROR(LOGGER,
-                     "KortexHardwareInterface does not support effort command "
-                     "interface!");
       }
     }
     if ((key == "tcp/twist.linear.x") || (key == "tcp/twist.linear.y") || (key == "tcp/twist.linear.z") ||
@@ -540,6 +387,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
     {
       start_modes_.emplace_back(StopStartInterface::START_TWIST);
     }
+    // TODO: Include fault controller joints
     // if ((key == "reset_fault/command") || (key == "reset_fault/async_success"))
     // {
     //   start_modes_.emplace_back(StopStartInterface::START_FAULT_CTRL);
@@ -562,6 +410,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   {
     stop_twist_control_mode_ = true;
   }
+  // TODO: Include the gripper and fault controllers
   // if (
   //   !stop_modes_.empty() &&
   //   std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_GRIPPER) !=
@@ -582,7 +431,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   {
     start_low_level_control_mode_ = true;
   }
-  if (!start_modes_.empty() &&
+  if (!start_modes_.empty() && !start_low_level_control_mode_ &&
       (std::find(start_modes_.begin(), start_modes_.end(), StopStartInterface::START_VEL) != start_modes_.end()))
   {
     start_joint_velocity_control_mode_ = true;
@@ -592,6 +441,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   {
     start_twist_control_mode_ = true;
   }
+  // TODO: Include the gripper and fault controllers
   // if (
   //   !start_modes_.empty() &&
   //   (std::find(start_modes_.begin(), start_modes_.end(), StopStartInterface::START_GRIPPER) !=
@@ -693,6 +543,7 @@ hardware_interface::return_type KortexHardwareInterface::perform_command_mode_sw
     twist_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
     twist_control_mode_running_ = true;
   }
+  // TODO: Include gripper and fault controllers
   // if (start_gripper_controller_)
   // {
   //   gripper_command_position_ = gripper_position_;
@@ -713,6 +564,186 @@ hardware_interface::return_type KortexHardwareInterface::perform_command_mode_sw
   block_write_ = false;
 
   return ret_val;
+}
+
+hardware_interface::CallbackReturn
+KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
+{
+  RCLCPP_INFO(LOGGER, "Activating Kortex3 Hardware Interface...");
+
+  try
+  {
+    // Initialize the Kortex API connection objects
+
+    // MQTT: high-level, low-frequency commands
+    router_mqtt_ = std::make_shared<k_api::RouterMQTT>(robot_ip_, mqtt_port_);
+    router_mqtt_->SpinProcess(std::chrono::milliseconds{ 1 });
+    session_mqtt_ = std::make_shared<k_api::Session::SessionClient>(router_mqtt_.get());
+    base_mqtt_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
+
+    // UDP: high-frequency feedback and low-level commands
+    transport_udp_ = std::make_unique<k_api::TransportClientUdp>();
+    router_udp_ = std::make_unique<k_api::RouterClient>(transport_udp_.get(), [](k_api::KError err) {
+      RCLCPP_ERROR(LOGGER, "UDP Router error: %s", err.toString().c_str());
+    });
+    session_udp_ = std::make_unique<k_api::SessionManager>(router_udp_.get());
+    base_cyclic_ = std::make_shared<k_api::BaseCyclic::BaseCyclicClient>(router_udp_.get());
+
+    // Start UDP connection
+    transport_udp_->connect(robot_ip_, port_realtime_);
+
+    // Set session data connection information
+    auto session_info = k_api::Session::CreateSessionInfo();
+    session_info.set_username(username_);
+    session_info.set_password(password_);
+    session_info.set_session_inactivity_timeout(session_inactivity_timeout_);
+    session_info.set_connection_inactivity_timeout(connection_inactivity_timeout_);
+
+    // Session manager service wrapper
+    RCLCPP_INFO(LOGGER, "Creating session for communication");
+    session_mqtt_->CreateSession(session_info);
+    session_udp_->CreateSession(session_info);
+    RCLCPP_INFO(LOGGER, "Session created");
+
+    // Wait for session to establish
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+    // Get the actual actuator count from the robot and verify if it matches the URDF
+    auto actuator_info = base_mqtt_->GetActuatorCount();
+    if (actuator_info.count() != actuator_count_)
+    {
+      RCLCPP_ERROR(LOGGER, "Robot reports %d actuators, but URDF expected %zu.",
+        actuator_info.count(), actuator_count_);
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+
+    // Set single level servoing and Monitored Stop on startup
+    // set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+    // change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+
+    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
+    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+
+    // First read
+    auto base_feedback = base_cyclic_->RefreshFeedback();
+
+    // Add each actuator to the base_command_ and set the command to its current position
+    for (std::size_t i = 0; i < actuator_count_; i++)
+    {
+      base_command_.add_actuators()->set_position(base_feedback.actuators(i).position());
+    }
+
+    // Send a first frame
+    base_feedback = base_cyclic_->Refresh(base_command_);
+
+    // Set some default values
+    for (std::size_t i = 0; i < actuator_count_; i++)
+    {
+      if (std::isnan(joint_positions_[i]))
+      {
+        joint_positions_[i] = base_feedback.actuators(i).position() * M_PI / 180.0;  // rad
+      }
+      if (std::isnan(joint_velocities_[i]))
+      {
+        joint_velocities_[i] = 0;
+      }
+      if (std::isnan(joint_torques_[i]))
+      {
+        joint_torques_[i] = 0;
+      }
+      if (std::isnan(joint_positions_cmd_[i]))
+      {
+        joint_positions_cmd_[i] = base_feedback.actuators(i).position() * M_PI / 180.0;  // rad
+      }
+      if (std::isnan(joint_velocities_cmd_[i]))
+      {
+        joint_velocities_cmd_[i] = 0;
+      }
+    }
+
+    RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
+    return hardware_interface::CallbackReturn::SUCCESS;
+  }
+  catch (const std::exception& ex)
+  {
+    RCLCPP_ERROR(LOGGER, "Exception during activation: %s", ex.what());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn
+KortexHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
+{
+  RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
+
+  // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
+  // TODO: check why it is still crashing
+  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+
+  // Close API sessions
+  if (session_udp_)
+  {
+    try
+    {
+      session_udp_->CloseSession();
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(LOGGER, "Error closing UDP session: %s", e.what());
+    }
+  }
+  if (session_mqtt_)
+  {
+    try
+    {
+      session_mqtt_->CloseSession();
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(LOGGER, "Error closing MQTT session: %s", e.what());
+    }
+  }
+
+  // Deactivate the router and cleanly disconnect from the transport object
+  if (router_mqtt_)
+  {
+    // TODO: Check if this works
+    router_mqtt_->SetActivationStatus(false);
+  }
+  if (router_udp_)
+  {
+    router_udp_->SetActivationStatus(false);
+  }
+  if (transport_udp_)
+  {
+    try
+    {
+      transport_udp_->disconnect();
+    }
+    catch (const std::exception& e)
+    {
+      RCLCPP_ERROR(LOGGER, "Error disconnecting UDP transport: %s", e.what());
+    }
+  }
+
+  // TODO: Shutdown grippers
+  // if (!gripper_a_.joint_name_.empty())
+  // {
+  //   gripper_a_.shutdown(gripper_mtx_);
+  // }
+  // if (!gripper_b_.joint_name_.empty())
+  // {
+  //   gripper_b_.shutdown(gripper_mtx_);
+  // }
+
+  // 5. Memory handling
+  delete k_api_twist_;
+
+  RCLCPP_INFO(LOGGER, "Kortex Hardware Interface deactivated.");
+  return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::return_type KortexHardwareInterface::read(const rclcpp::Time& /*time*/,
@@ -770,7 +801,7 @@ hardware_interface::return_type KortexHardwareInterface::write(const rclcpp::Tim
     {
       if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
       {
-        // sendTwistCommand();
+        sendTwistCommand();
       }
     }
     else
@@ -854,7 +885,7 @@ void KortexHardwareInterface::change_operating_mode(const k_api::Common::Operati
   try
   {
     mode_selection_.set_operating_mode(mode);
-    base_->SelectOperatingMode(mode_selection_);
+    base_mqtt_->SelectOperatingMode(mode_selection_);
     // Allow time for the controller to switch modes.
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     RCLCPP_INFO(LOGGER, "Operating mode set to %s.", k_api::Common::OperatingModeType_Name(mode).c_str());
@@ -889,7 +920,7 @@ void KortexHardwareInterface::set_servoing_mode(const k_api::Base::ServoingMode&
   try
   {
     servoing_mode_info_.set_servoing_mode(mode);
-    base_->SetServoingMode(servoing_mode_info_);
+    base_mqtt_->SetServoingMode(servoing_mode_info_);
     arm_mode_ = mode;
     RCLCPP_INFO(LOGGER, "Servoing mode set to %s.", k_api::Base::ServoingMode_Name(mode).c_str());
   }
@@ -922,7 +953,7 @@ void KortexHardwareInterface::sendJointSpeedsCommand()
       joint_speed->set_joint_identifier(i);
       joint_speed->set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
     }
-    base_->SendJointSpeedsCommand(joint_speeds);
+    base_mqtt_->SendJointSpeedsCommand(joint_speeds);
 
     // k_api::Base::Action action;
     // action.set_name("ros2_control_velocity_command");
@@ -934,7 +965,7 @@ void KortexHardwareInterface::sendJointSpeedsCommand()
     //   sp.set_joint_identifier(i);
     //   sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
     // }
-    // base_->ExecuteAction(action);
+    // base_mqtt_->ExecuteAction(action);
   }
   catch (const k_api::KDetailedException& e)
   {
@@ -974,7 +1005,7 @@ void KortexHardwareInterface::sendJointPositionCommands()
     auto* actuator = command.add_actuators();
     actuator->set_flags(0);
     actuator->set_position(joint_positions_cmd_[i] * 180.0 / M_PI);
-    // actuator->set_velocity(joint_velocities_[i] * 180.0 / M_PI);
+    // actuator->set_velocity(joint_velocities_cmd_[i] * 180.0 / M_PI);
   }
 
   // send the command to the robot
@@ -1007,372 +1038,15 @@ void KortexHardwareInterface::sendJointPositionCommands()
   }
 }
 
-// void KortexMultiInterfaceHardware::sendTwistCommand()
-// {
-//   k_api_twist_->set_linear_x(static_cast<float>(twist_cmd_[0]));
-//   k_api_twist_->set_linear_y(static_cast<float>(twist_cmd_[1]));
-//   k_api_twist_->set_linear_z(static_cast<float>(twist_cmd_[2]));
-//   k_api_twist_->set_angular_x(static_cast<float>(twist_cmd_[3]));
-//   k_api_twist_->set_angular_y(static_cast<float>(twist_cmd_[4]));
-//   k_api_twist_->set_angular_z(static_cast<float>(twist_cmd_[5]));
-//   base_.SendTwistCommand(k_api_twist_command_);
-// }
-
-bool KortexHardwareInterface::rampInit()
+void KortexHardwareInterface::sendTwistCommand()
 {
-  uint32_t moving_actuator = 0;
-  bool clockwise = true;
-  float velocity_deg_per_sec = 3.0f;
-  const float amplitude_deg = 10.0f;              // Always move 10 degrees
-  const float acceleration_deg_per_sec2 = 25.0f;  // Accel/decel at 25 deg/s^2
-  const float deceleration_deg_per_sec2 = 25.0f;
-
-  RCLCPP_INFO(LOGGER, "Starting cyclic loop test (trapezoidal velocity profile):");
-  RCLCPP_INFO(LOGGER, "  Servoing mode: %s (%u)", k_api::Base::ServoingMode_Name(arm_mode_).c_str(), arm_mode_);
-  RCLCPP_INFO(LOGGER, "  Actuator: %u", moving_actuator);
-  RCLCPP_INFO(LOGGER, "  Direction: %s", clockwise ? "clockwise" : "counter-clockwise");
-  RCLCPP_INFO(LOGGER, "  Target velocity: %.2f deg/s", velocity_deg_per_sec);
-  RCLCPP_INFO(LOGGER, "  Total angle: %.2f deg", amplitude_deg);
-  RCLCPP_INFO(LOGGER, "  Fixed acceleration: %.2f deg/s^2", acceleration_deg_per_sec2);
-  RCLCPP_INFO(LOGGER, "  Fixed deceleration: %.2f deg/s^2", deceleration_deg_per_sec2);
-
-  // Get initial feedback to establish starting positions
-  // Send multiple synchronization cycles to ensure stable communication
-  RCLCPP_INFO(LOGGER, "Synchronizing position (sending hold commands)...");
-  Kinova::Api::BaseCyclic::Feedback initial_feedback;
-
-  // Send 30 hold-position cycles to synchronize.
-  // IMPORTANT: Send hold commands from cycle 0, not just RefreshFeedback.
-  // In LOW_LEVEL mode the actuator needs a BaseCyclic position setpoint immediately
-  // after mode transition. Delaying commands (RefreshFeedback-only cycles) leaves
-  // the actuator without a setpoint, causing Code 50030 when the first Refresh()
-  // command eventually arrives.
-  for (int sync_cycle = 0; sync_cycle < 30; sync_cycle++)
-  {
-    try
-    {
-      // Get current feedback first, then command that exact position.
-      Kinova::Api::BaseCyclic::Feedback current_sync_feedback;
-      current_sync_feedback = base_cyclic_->RefreshFeedback();
-
-      // Log initial positions on first cycle
-      if (sync_cycle == 0)
-      {
-        RCLCPP_INFO(LOGGER, "Initial positions captured (cycle 0):");
-        for (int i = 0; i < current_sync_feedback.actuators_size(); i++)
-        {
-          RCLCPP_INFO(LOGGER, "  Act %d: %.3f deg", i, current_sync_feedback.actuators(i).position());
-        }
-      }
-
-      // Build and send hold command using the position we JUST received
-      Kinova::Api::BaseCyclic::Command hold_cmd;
-      hold_cmd.set_frame_id(sync_cycle);
-      for (int i = 0; i < current_sync_feedback.actuators_size(); i++)
-      {
-        auto* actuator = hold_cmd.add_actuators();
-        actuator->set_flags(0);
-        actuator->set_position(current_sync_feedback.actuators(i).position());
-        actuator->set_velocity(0.0f);
-      }
-
-      if (sync_cycle == 0)
-      {
-        RCLCPP_INFO(LOGGER, "First hold commands sent (cycle 0) using fresh feedback positions");
-      }
-
-      current_sync_feedback = base_cyclic_->Refresh(hold_cmd);
-
-      // Update feedback for next cycle
-      initial_feedback = current_sync_feedback;
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));  // 1ms between sync cycles
-    }
-    catch (Kinova::Api::KDetailedException& ex)
-    {
-      RCLCPP_ERROR(LOGGER, "Error during synchronization cycle %d: %s", sync_cycle, ex.what());
-      return false;
-    }
-  }
-  RCLCPP_INFO(LOGGER, "Position synchronized");
-
-  // Store initial joint positions and initialize target positions
-  std::vector<float> initial_positions;
-  std::vector<float> target_positions;  // Track commanded positions independently
-  RCLCPP_INFO(LOGGER, "Initial joint positions:");
-  if (moving_actuator >= (uint32_t)initial_feedback.actuators_size())
-  {
-    RCLCPP_ERROR(LOGGER, "Error: actuator_index %u out of range (robot has %d actuators, valid range: 0-%d)", moving_actuator,
-           initial_feedback.actuators_size(), initial_feedback.actuators_size() - 1);
-    return false;
-  }
-
-  for (uint32_t i = 0; i < initial_feedback.actuators_size(); i++)
-  {
-    float pos = initial_feedback.actuators(i).position();
-    initial_positions.push_back(pos);
-    target_positions.push_back(pos);  // Start at current position
-    if (i == moving_actuator)
-    {
-      RCLCPP_INFO(LOGGER, "  Joint %u: %.2f deg", i, pos);
-    }
-  }
-
-  // Calculate trapezoidal (or triangular) profile parameters
-  const float direction = clockwise ? 1.0f : -1.0f;
-  const float total_angle_to_move = fabs(amplitude_deg);
-  const float accel = fabs(acceleration_deg_per_sec2);
-
-  // Clamp peak velocity to what is physically reachable within the given amplitude.
-  // If the requested velocity is too high, the profile becomes triangular (no constant
-  // velocity phase): the robot accelerates to the clamped peak then immediately decelerates.
-  const float max_reachable_velocity = sqrtf(accel * total_angle_to_move);
-  float target_velocity = fabs(velocity_deg_per_sec);
-  if (target_velocity > max_reachable_velocity)
-  {
-    RCLCPP_INFO(LOGGER, "  Note: Peak velocity clamped %.2f -> %.2f deg/s (triangular profile, amplitude too small)",
-           target_velocity, max_reachable_velocity);
-    target_velocity = max_reachable_velocity;
-  }
-
-  // Calculate time durations for each phase
-  const float accel_time = target_velocity / accel;
-  const float decel_time = accel_time;  // Symmetric profile
-
-  // Distance covered during acceleration and deceleration
-  const float accel_distance = 0.5f * accel * accel_time * accel_time;  // d = 0.5*a*t²
-  const float decel_distance = accel_distance;
-  const float const_velocity_distance = total_angle_to_move - accel_distance - decel_distance;
-  const float const_time = (const_velocity_distance > 0.0f) ? (const_velocity_distance / target_velocity) : 0.0f;
-
-  RCLCPP_INFO(LOGGER, "  Accel time: %.2f s (distance: %.2f deg)", accel_time, accel_distance);
-  RCLCPP_INFO(LOGGER, "  Const velocity time: %.2f s (distance: %.2f deg)", const_time, const_velocity_distance);
-  RCLCPP_INFO(LOGGER, "  Decel time: %.2f s (distance: %.2f deg)", decel_time, decel_distance);
-
-  // Timing parameters
-  const uint32_t CYCLE_TIME_US = 1000;  // 1ms = 1kHz target
-  const float WARMUP_TIME_SEC = 0.5f;   // 500ms warmup (increased for stability after brake release)
-
-  RCLCPP_INFO(LOGGER, "Starting cyclic loop at 1kHz (1ms per cycle)...");
-  RCLCPP_INFO(LOGGER, "Warmup period: %.0f ms", WARMUP_TIME_SEC * 1000.0f);
-  RCLCPP_INFO(LOGGER, "Will stop automatically 1s after motion completes");
-
-  uint32_t cycle_count = 0;
-  bool running = true;
-  auto test_start_time = std::chrono::high_resolution_clock::now();
-  float last_print_time = 0.0f;
-  float angle_moved = 0.0f;           // Track cumulative angle moved
-  uint32_t complete_hold_cycles = 0;  // Cycles spent holding after motion complete
-
-  // Store current feedback for next cycle
-  Kinova::Api::BaseCyclic::Feedback current_feedback = initial_feedback;
-
-  while (running)
-  {
-    auto cycle_start = std::chrono::high_resolution_clock::now();
-
-    // Calculate actual elapsed time
-    float elapsed_time_sec =
-        std::chrono::duration_cast<std::chrono::microseconds>(cycle_start - test_start_time).count() / 1000000.0f;
-
-    // Prepare command
-    Kinova::Api::BaseCyclic::Command command;
-    command.set_frame_id(cycle_count);
-
-    // Calculate target velocity and acceleration based on time (trapezoidal profile)
-    // Use angle_moved only as stopping condition
-    float current_velocity;
-    float current_accel;                                     // Current acceleration for position calculation
-    float motion_time = elapsed_time_sec - WARMUP_TIME_SEC;  // Time since motion started
-
-    if (elapsed_time_sec < WARMUP_TIME_SEC)
-    {
-      // Warmup phase - no motion
-      current_velocity = 0.0f;
-      current_accel = 0.0f;
-    }
-    else if (motion_time >= 0.0f && motion_time < 0.001f)
-    {
-      // Just started motion - print trace
-      RCLCPP_INFO(LOGGER, "*** MOTION STARTED - Robot should be moving now! ***");
-      RCLCPP_INFO(LOGGER, "  Time: %.3f s, Angle moved: %.2f deg", elapsed_time_sec, angle_moved);
-      current_velocity = accel * motion_time;
-      current_accel = accel;
-    }
-    else if (angle_moved >= total_angle_to_move)
-    {
-      // Motion complete - hold briefly then exit
-      current_velocity = 0.0f;
-      current_accel = 0.0f;
-      complete_hold_cycles++;
-      if (complete_hold_cycles >= 1000)  // 1 second hold then exit
-      {
-        running = false;
-      }
-    }
-    else if (motion_time < accel_time)
-    {
-      // Acceleration phase: v = a*t
-      current_velocity = accel * motion_time;
-      current_accel = accel;  // Positive acceleration
-    }
-    else if (motion_time < (accel_time + const_time))
-    {
-      // Constant velocity phase
-      current_velocity = target_velocity;
-      current_accel = 0.0f;  // No acceleration
-    }
-    else if (motion_time < (accel_time + const_time + decel_time))
-    {
-      // Deceleration phase: v = v_target - a*(t - t_decel_start)
-      float decel_elapsed = motion_time - accel_time - const_time;
-      current_velocity = target_velocity - accel * decel_elapsed;
-      if (current_velocity < 0.0f)
-        current_velocity = 0.0f;
-      current_accel = -accel;  // Negative acceleration (deceleration)
-    }
-    else
-    {
-      // Time-based motion complete - hold briefly then exit
-      current_velocity = 0.0f;
-      current_accel = 0.0f;
-      complete_hold_cycles++;
-      if (complete_hold_cycles >= 1000)  // 1 second hold then exit
-      {
-        running = false;
-      }
-    }
-
-    // Note: TCP velocity limiting is now handled by Kontrol's energy-based limiting
-    // in LowLevelPassthroughMode. No testclient-side limiting needed.
-
-    // Build commands for all actuators
-    // Only the first num_actuators will move, rest hold position
-    for (uint32_t i = 0; i < current_feedback.actuators_size(); i++)
-    {
-      auto* actuator = command.add_actuators();
-
-      // Set flags to 0 (no special flags needed for LOW_LEVEL mode)
-      actuator->set_flags(0);
-
-      if (i == moving_actuator)
-      {
-        // This actuator should move
-        // Compute position increment using velocity-only: Δx = v*Δt
-        // (Removed acceleration term to prevent tracking errors)
-        const float dt = 0.001f;  // 1ms cycle time @ 1kHz
-        float position_increment = direction * current_velocity * dt;
-
-        // Update target position for this actuator
-        target_positions[i] += position_increment;
-
-        // Set position and velocity commands
-        actuator->set_position(target_positions[i]);
-        actuator->set_velocity(fabs(current_velocity));
-
-        angle_moved += fabs(position_increment);
-      }
-      else
-      {
-        // This actuator should hold position (use tracked target, not feedback)
-        actuator->set_position(target_positions[i]);
-        actuator->set_velocity(0.0f);
-      }
-    }
-
-    // Send command and get feedback
-    try
-    {
-      Kinova::Api::BaseCyclic::Feedback new_feedback = base_cyclic_->Refresh(command);
-      current_feedback = new_feedback;  // Store for next cycle
-
-      // Print status every second
-      if (elapsed_time_sec - last_print_time >= 1.0f)
-      {
-        auto cycle_end = std::chrono::high_resolution_clock::now();
-        auto cycle_time_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
-        float cycle_rate_hz = cycle_count / elapsed_time_sec;
-
-        // Determine current phase based on time
-        const char* phase = "warmup";
-        if (elapsed_time_sec >= WARMUP_TIME_SEC)
-        {
-          float motion_time_status = elapsed_time_sec - WARMUP_TIME_SEC;
-          if (angle_moved >= total_angle_to_move || motion_time_status >= (accel_time + const_time + decel_time))
-          {
-            phase = "complete";
-          }
-          else if (motion_time_status < accel_time)
-          {
-            phase = "accel";
-          }
-          else if (motion_time_status < (accel_time + const_time))
-          {
-            phase = "const";
-          }
-          else
-          {
-            phase = "decel";
-          }
-        }
-
-        RCLCPP_INFO(LOGGER, 
-            "Time: %.1fs [%s], Cycles: %u (%.0f Hz), Cycle: %ld us, Moved: %.2f/%.2f deg, J%u: %.2f deg, V%u: %.2f "
-            "deg/s",
-            elapsed_time_sec, phase, cycle_count, cycle_rate_hz, cycle_time_us, angle_moved, total_angle_to_move,
-            moving_actuator,
-            current_feedback.actuators_size() > (int)moving_actuator ?
-                current_feedback.actuators(moving_actuator).position() :
-                0.0f,
-            moving_actuator,
-            current_feedback.actuators_size() > (int)moving_actuator ?
-                current_feedback.actuators(moving_actuator).velocity() :
-                0.0f);
-
-        last_print_time = elapsed_time_sec;
-
-        // Check for faults
-        if (current_feedback.base().fault_bank_a() != 0 || current_feedback.base().fault_bank_b() != 0)
-        {
-          RCLCPP_INFO(LOGGER, "FAULT DETECTED! Bank A: 0x%08X, Bank B: 0x%08X", current_feedback.base().fault_bank_a(),
-                 current_feedback.base().fault_bank_b());
-          running = false;
-        }
-      }
-    }
-    catch (Kinova::Api::KDetailedException& ex)
-    {
-      RCLCPP_ERROR(LOGGER, "Error during cyclic loop (time %.2fs, cycle %u): %s", elapsed_time_sec, cycle_count, ex.what());
-      running = false;
-      break;
-    }
-
-    cycle_count++;
-
-    // Busy-wait to maintain 1kHz rate (1ms per cycle)
-    auto cycle_end = std::chrono::high_resolution_clock::now();
-    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
-
-    // Spin until 1ms has elapsed from cycle start
-    while (elapsed_us < CYCLE_TIME_US)
-    {
-      cycle_end = std::chrono::high_resolution_clock::now();
-      elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(cycle_end - cycle_start).count();
-    }
-  }
-
-  auto final_time = std::chrono::high_resolution_clock::now();
-  float total_time_sec =
-      std::chrono::duration_cast<std::chrono::microseconds>(final_time - test_start_time).count() / 1000000.0f;
-  float avg_cycle_rate_hz = cycle_count / total_time_sec;
-  float avg_cycle_time_us = (total_time_sec * 1000000.0f) / cycle_count;
-
-  RCLCPP_INFO(LOGGER, "Cyclic loop completed:");
-  RCLCPP_INFO(LOGGER, "  Total time: %.2f seconds", total_time_sec);
-  RCLCPP_INFO(LOGGER, "  Total cycles: %u", cycle_count);
-  RCLCPP_INFO(LOGGER, "  Average rate: %.0f Hz", avg_cycle_rate_hz);
-  RCLCPP_INFO(LOGGER, "  Average cycle time: %.0f us", avg_cycle_time_us);
-
-  return true;
+  k_api_twist_->set_linear_x(static_cast<float>(twist_cmd_[0]));
+  k_api_twist_->set_linear_y(static_cast<float>(twist_cmd_[1]));
+  k_api_twist_->set_linear_z(static_cast<float>(twist_cmd_[2]));
+  k_api_twist_->set_angular_x(static_cast<float>(twist_cmd_[3]));
+  k_api_twist_->set_angular_y(static_cast<float>(twist_cmd_[4]));
+  k_api_twist_->set_angular_z(static_cast<float>(twist_cmd_[5]));
+  base_mqtt_->SendTwistCommand(k_api_twist_command_);
 }
 
 }  // namespace kortex3_driver

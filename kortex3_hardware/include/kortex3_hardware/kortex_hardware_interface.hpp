@@ -88,11 +88,15 @@ private:
   std::unique_ptr<k_api::RouterClient> router_udp_;
   std::unique_ptr<k_api::SessionManager> session_udp_;
 
-  std::shared_ptr<k_api::Base::BaseClient> base_;
+  std::shared_ptr<k_api::Base::BaseClient> base_mqtt_;
   std::shared_ptr<k_api::BaseCyclic::BaseCyclicClient> base_cyclic_;
 
 
   k_api::BaseCyclic::Command base_command_;
+
+  // twist temporary command
+  k_api::Base::Twist * k_api_twist_;
+  k_api::Base::TwistCommand k_api_twist_command_;
 
 
   size_t actuator_count_;
@@ -163,10 +167,9 @@ private:
 
   void sendJointPositionCommands();
   void sendJointSpeedsCommand();
+  void sendTwistCommand();
 
   int base_command_frame_id_;
-
-  bool rampInit();
 };
 
 }  // namespace kortex3_driver
