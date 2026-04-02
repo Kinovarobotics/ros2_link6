@@ -68,12 +68,8 @@ add_library(kortex3_hardware_interface SHARED
   src/slick/Communication/ModbusRequestBuffer.cpp
 )
 
-add_library(kortex_hardware_interface SHARED
-  src/kortex_hardware_interface.cpp
-)
-
-add_library(kortex_hardware_interface_jog_mode SHARED
-  src/kortex_hardware_interface_jog_mode.cpp
+add_library(kortex3_hardware_interface_low_level SHARED
+  src/kortex3_hardware_interface_low_level.cpp
 )
 
 target_include_directories(kortex3_hardware_interface PUBLIC
@@ -129,7 +125,7 @@ target_link_libraries(kortex3_hardware_interface PUBLIC
   pthread
 )
 
-target_include_directories(kortex_hardware_interface PUBLIC
+target_include_directories(kortex3_hardware_interface_low_level PUBLIC
   include
   "${KORTEX_SDK_DIR}/include/messages"
   "${KORTEX_SDK_DIR}/include/client"
@@ -144,23 +140,7 @@ target_include_directories(kortex_hardware_interface PUBLIC
   # "${KORTEX_SDK_DIR}/include/google"
 )
 
-target_link_libraries(kortex_hardware_interface PUBLIC
-  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
-  pthread
-)
-
-target_include_directories(kortex_hardware_interface_jog_mode PUBLIC
-  include
-  "${KORTEX_SDK_DIR}/include/messages"
-  "${KORTEX_SDK_DIR}/include/client"
-  "${KORTEX_SDK_DIR}/include/client_stubs"
-  "${KORTEX_SDK_DIR}/include/common"
-  "${KORTEX_SDK_DIR}/include/util"
-  "${KORTEX_SDK_DIR}/include/participant"
-  "${KORTEX_SDK_DIR}/include/server"
-)
-
-target_link_libraries(kortex_hardware_interface_jog_mode PUBLIC
+target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
   "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
   pthread
 )
@@ -176,13 +156,7 @@ ament_target_dependencies(kortex3_hardware_interface PUBLIC
         controller_manager_msgs
 )
 
-ament_target_dependencies(kortex_hardware_interface PUBLIC
-  hardware_interface
-  pluginlib
-  rclcpp
-)
-
-ament_target_dependencies(kortex_hardware_interface_jog_mode PUBLIC
+ament_target_dependencies(kortex3_hardware_interface_low_level PUBLIC
   hardware_interface
   pluginlib
   rclcpp
@@ -204,12 +178,7 @@ pluginlib_export_plugin_description_file(
 
 pluginlib_export_plugin_description_file(
   hardware_interface
-  kortex_hardware_interface.xml
-)
-
-pluginlib_export_plugin_description_file(
-  hardware_interface
-  kortex_hardware_interface_jog_mode.xml
+  kortex3_hardware_interface_low_level.xml
 )
 
 # --- Calibration Download Node ---
@@ -251,7 +220,7 @@ if(BUILD_TESTING)
 endif()
 
 # --- Installation Rules ---
-set(install_targets kortex3_hardware_interface get_calibration_node kortex_hardware_interface kortex_hardware_interface_jog_mode)
+set(install_targets kortex3_hardware_interface get_calibration_node kortex3_hardware_interface_low_level)
 if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only
@@ -293,8 +262,7 @@ install(
 # --- Export Targets for Downstream Packages ---
 ament_export_include_directories(include)
 ament_export_libraries(kortex3_hardware_interface)
-ament_export_libraries(kortex_hardware_interface)
-ament_export_libraries(kortex_hardware_interface_jog_mode)
+ament_export_libraries(kortex3_hardware_interface_low_level)
 ament_export_dependencies(
         rclcpp
         rclcpp_lifecycle

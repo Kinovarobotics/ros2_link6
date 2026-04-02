@@ -51,7 +51,7 @@
             <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
           </xacro:unless>
           <xacro:if value="${low_level_mode}">
-            <plugin>kortex3_driver/KortexHardwareInterface</plugin>
+            <plugin>kortex3_driver/Kortex3HardwareInterfaceLowLevel</plugin>
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>

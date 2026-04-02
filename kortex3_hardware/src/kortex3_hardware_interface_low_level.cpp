@@ -3,16 +3,16 @@
 #include <string>
 #include <vector>
 
-#include "kortex3_hardware/kortex_hardware_interface.hpp"
+#include "kortex3_hardware/kortex3_hardware_interface_low_level.hpp"
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace kortex3_driver
 {
-const rclcpp::Logger LOGGER = rclcpp::get_logger("KortexHardwareInterface");
+const rclcpp::Logger LOGGER = rclcpp::get_logger("Kortex3HardwareInterfaceLowLevel");
 
-KortexHardwareInterface::KortexHardwareInterface()
+Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   : mode_selection_(k_api::Common::ModeSelection())
   , servoing_mode_info_(k_api::Base::ServoingModeInformation())
   , actuator_count_(6)  // Default, updated from robot during activation.
@@ -37,7 +37,7 @@ KortexHardwareInterface::KortexHardwareInterface()
   }
 }
 
-hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardware_interface::HardwareInfo& info)
+hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(const hardware_interface::HardwareInfo& info)
 {
   RCLCPP_INFO(LOGGER, "Initializing Kortex3 Hardware Interface...");
   if (hardware_interface::SystemInterface::on_init(info) != hardware_interface::CallbackReturn::SUCCESS)
@@ -193,7 +193,7 @@ hardware_interface::CallbackReturn KortexHardwareInterface::on_init(const hardwa
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> KortexHardwareInterface::export_state_interfaces()
+std::vector<hardware_interface::StateInterface> Kortex3HardwareInterfaceLowLevel::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
   std::vector<std::string> arm_joint_names;
@@ -235,7 +235,7 @@ std::vector<hardware_interface::StateInterface> KortexHardwareInterface::export_
   return state_interfaces;
 }
 
-std::vector<hardware_interface::CommandInterface> KortexHardwareInterface::export_command_interfaces()
+std::vector<hardware_interface::CommandInterface> Kortex3HardwareInterfaceLowLevel::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
   std::vector<std::string> arm_joint_names;
@@ -284,7 +284,7 @@ std::vector<hardware_interface::CommandInterface> KortexHardwareInterface::expor
   return command_interfaces;
 }
 
-hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_switch(
+hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_command_mode_switch(
     const std::vector<std::string>& start_interfaces, const std::vector<std::string>& stop_interfaces)
 {
   hardware_interface::return_type ret_val = hardware_interface::return_type::OK;
@@ -331,7 +331,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
       if (key == joint.name + "/" + hardware_interface::HW_IF_EFFORT)
       {
         // Effort command interface is not supported
-        RCLCPP_ERROR(LOGGER, "KortexHardwareInterface does not support effort command interface!");
+        RCLCPP_ERROR(LOGGER, "Kortex3HardwareInterfaceLowLevel does not support effort command interface!");
         continue;
       }
     }
@@ -378,7 +378,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
       if (key == joint.name + "/" + hardware_interface::HW_IF_EFFORT)
       {
         // Effort command interface is not supported
-        RCLCPP_ERROR(LOGGER, "KortexHardwareInterface does not support effort command interface!");
+        RCLCPP_ERROR(LOGGER, "Kortex3HardwareInterfaceLowLevel does not support effort command interface!");
         continue;
       }
     }
@@ -493,7 +493,7 @@ hardware_interface::return_type KortexHardwareInterface::prepare_command_mode_sw
   return ret_val;
 }
 
-hardware_interface::return_type KortexHardwareInterface::perform_command_mode_switch(
+hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_command_mode_switch(
     const std::vector<std::string>& /*start_interfaces*/, const std::vector<std::string>& /*stop_interfaces*/)
 {
   hardware_interface::return_type ret_val = hardware_interface::return_type::OK;
@@ -521,6 +521,7 @@ hardware_interface::return_type KortexHardwareInterface::perform_command_mode_sw
     joint_velocity_control_mode_running_ = false;
     twist_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
+    joint_velocities_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
     low_level_control_mode_running_ = true;
     // refresh feedback
     feedback_ = base_cyclic_->RefreshFeedback();
@@ -567,7 +568,7 @@ hardware_interface::return_type KortexHardwareInterface::perform_command_mode_sw
 }
 
 hardware_interface::CallbackReturn
-KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
+Kortex3HardwareInterfaceLowLevel::on_activate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(LOGGER, "Activating Kortex3 Hardware Interface...");
 
@@ -618,23 +619,11 @@ KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_s
     }
 
     // Set single level servoing and Monitored Stop on startup
-    // set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-    // change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
-
-    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+    set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
 
     // First read
     auto base_feedback = base_cyclic_->RefreshFeedback();
-
-    // Add each actuator to the base_command_ and set the command to its current position
-    for (std::size_t i = 0; i < actuator_count_; i++)
-    {
-      base_command_.add_actuators()->set_position(base_feedback.actuators(i).position());
-    }
-
-    // Send a first frame
-    base_feedback = base_cyclic_->Refresh(base_command_);
 
     // Set some default values
     for (std::size_t i = 0; i < actuator_count_; i++)
@@ -674,13 +663,14 @@ KortexHardwareInterface::on_activate(const rclcpp_lifecycle::State& /*previous_s
 }
 
 hardware_interface::CallbackReturn
-KortexHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
+Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
 
   // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
-  // TODO: check why it is still crashing
+  // TODO: check why it makes a noise
   set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
 
   // Close API sessions
@@ -710,7 +700,6 @@ KortexHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous
   // Deactivate the router and cleanly disconnect from the transport object
   if (router_mqtt_)
   {
-    // TODO: Check if this works
     router_mqtt_->SetActivationStatus(false);
   }
   if (router_udp_)
@@ -739,14 +728,14 @@ KortexHardwareInterface::on_deactivate(const rclcpp_lifecycle::State& /*previous
   //   gripper_b_.shutdown(gripper_mtx_);
   // }
 
-  // 5. Memory handling
+  // Memory handling
   delete k_api_twist_;
 
   RCLCPP_INFO(LOGGER, "Kortex Hardware Interface deactivated.");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::return_type KortexHardwareInterface::read(const rclcpp::Time& /*time*/,
+hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rclcpp::Time& /*time*/,
                                                               const rclcpp::Duration& /*period*/)
 {
   try
@@ -763,16 +752,14 @@ hardware_interface::return_type KortexHardwareInterface::read(const rclcpp::Time
   }
   catch (const k_api::KDetailedException& ex)
   {
-    // in_fault_ = true;
     RCLCPP_ERROR(LOGGER, "Robot feedback error: %s", ex.what());
-    // RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
     return hardware_interface::return_type::ERROR;
   }
 
   return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type KortexHardwareInterface::write(const rclcpp::Time& /*time*/,
+hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rclcpp::Time& /*time*/,
                                                                const rclcpp::Duration& /*period*/)
 {
   if (block_write_)
@@ -871,7 +858,7 @@ hardware_interface::return_type KortexHardwareInterface::write(const rclcpp::Tim
   return hardware_interface::return_type::OK;
 }
 
-void KortexHardwareInterface::change_operating_mode(const k_api::Common::OperatingModeType& mode)
+void Kortex3HardwareInterfaceLowLevel::change_operating_mode(const k_api::Common::OperatingModeType& mode)
 {
   // The possible operating mode types of the robots are:
 
@@ -908,7 +895,7 @@ void KortexHardwareInterface::change_operating_mode(const k_api::Common::Operati
   }
 }
 
-void KortexHardwareInterface::set_servoing_mode(const k_api::Base::ServoingMode& mode)
+void Kortex3HardwareInterfaceLowLevel::set_servoing_mode(const k_api::Base::ServoingMode& mode)
 {
   // The possible servoing modes of the robots are:
 
@@ -942,30 +929,21 @@ void KortexHardwareInterface::set_servoing_mode(const k_api::Base::ServoingMode&
   }
 }
 
-void KortexHardwareInterface::sendJointSpeedsCommand()
+void Kortex3HardwareInterfaceLowLevel::sendJointSpeedsCommand()
 {
   try
   {
-    k_api::Base::JointSpeeds joint_speeds;
-    for (size_t i = 0; i < actuator_count_; ++i)
-    {
-      auto joint_speed = joint_speeds.add_joint_speeds();
-      joint_speed->set_joint_identifier(i);
-      joint_speed->set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
+    k_api::Base::Action action;
+    action.set_name("ros2_control_velocity_command");
+    auto *js = action.mutable_send_joint_speeds();
+
+    // Convert joint velocities from rad/s (ROS) to deg/s (Kortex API).
+    for (size_t i = 0; i < actuator_count_; ++i) {
+      auto &sp = *js->add_joint_speeds();
+      sp.set_joint_identifier(i);
+      sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
     }
-    base_mqtt_->SendJointSpeedsCommand(joint_speeds);
-
-    // k_api::Base::Action action;
-    // action.set_name("ros2_control_velocity_command");
-    // auto *js = action.mutable_send_joint_speeds();
-
-    // // Convert joint velocities from rad/s (ROS) to deg/s (Kortex API).
-    // for (size_t i = 0; i < actuator_count_; ++i) {
-    //   auto &sp = *js->add_joint_speeds();
-    //   sp.set_joint_identifier(i);
-    //   sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
-    // }
-    // base_mqtt_->ExecuteAction(action);
+    base_mqtt_->ExecuteAction(action);
   }
   catch (const k_api::KDetailedException& e)
   {
@@ -977,7 +955,7 @@ void KortexHardwareInterface::sendJointSpeedsCommand()
   }
 }
 
-void KortexHardwareInterface::sendJointPositionCommands()
+void Kortex3HardwareInterfaceLowLevel::sendJointPositionCommands()
 {
   // Incrementing identifier ensures actuators can reject out of time frames
   // base_command_.set_frame_id(base_command_.frame_id() + 1);
@@ -1005,7 +983,7 @@ void KortexHardwareInterface::sendJointPositionCommands()
     auto* actuator = command.add_actuators();
     actuator->set_flags(0);
     actuator->set_position(joint_positions_cmd_[i] * 180.0 / M_PI);
-    // actuator->set_velocity(joint_velocities_cmd_[i] * 180.0 / M_PI);
+    actuator->set_velocity(joint_velocities_cmd_[i] * 180.0 / M_PI);
   }
 
   // send the command to the robot
@@ -1038,7 +1016,7 @@ void KortexHardwareInterface::sendJointPositionCommands()
   }
 }
 
-void KortexHardwareInterface::sendTwistCommand()
+void Kortex3HardwareInterfaceLowLevel::sendTwistCommand()
 {
   k_api_twist_->set_linear_x(static_cast<float>(twist_cmd_[0]));
   k_api_twist_->set_linear_y(static_cast<float>(twist_cmd_[1]));
@@ -1054,4 +1032,4 @@ void KortexHardwareInterface::sendTwistCommand()
 #include "pluginlib/class_list_macros.hpp"
 
 // Registers this class with pluginlib, making it available to the ros2_control controller manager.
-PLUGINLIB_EXPORT_CLASS(kortex3_driver::KortexHardwareInterface, hardware_interface::SystemInterface)
+PLUGINLIB_EXPORT_CLASS(kortex3_driver::Kortex3HardwareInterfaceLowLevel, hardware_interface::SystemInterface)
