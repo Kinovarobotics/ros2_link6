@@ -21,7 +21,7 @@
     use_fake_hardware:=false
     fake_sensor_commands:=false
     sim_gazebo:=false
-    moveit_active:=false
+    low_level_mode:=false
     initial_positions_file:='$(find link6_description)/config/initial_positions.yaml'
     calibration_file:='$(find link6_description)/config/default_calibration.yaml'">
 
@@ -80,8 +80,8 @@
       use_fake_hardware="${use_fake_hardware}"
       fake_sensor_commands="${fake_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
-      initial_positions="${initial_positions}"
-      moveit_active="${moveit_active}" />
+      low_level_mode="${low_level_mode}"
+      initial_positions="${initial_positions}" />
 
 
     <!-- Define material colors -->

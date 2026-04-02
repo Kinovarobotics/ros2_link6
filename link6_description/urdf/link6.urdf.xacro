@@ -22,6 +22,7 @@
     <xacro:arg name="fake_sensor_commands" default="false" />
     <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
     <xacro:arg name="use_external_cable" default="false" />
+    <xacro:arg name="low_level_mode" default="false" />
     <!-- Initial position for simulations (Mock Hardware, Gazebo) -->
     <xacro:arg name="initial_positions_file" default="$(find link6_description)/config/initial_positions.yaml" />
     <!-- Robot-specific calibration -->
@@ -51,6 +52,7 @@
         use_fake_hardware="$(arg use_fake_hardware)"
         fake_sensor_commands="$(arg fake_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
+        low_level_mode="$(arg low_level_mode)"
         initial_positions_file="$(arg initial_positions_file)"
         calibration_file="$(arg calibration_file)">
         <origin xyz="0 0 0" rpy="0 0 0" />  <!-- position robot in the world -->
