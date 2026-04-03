@@ -68,7 +68,7 @@ public:
   hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
 private:
-  // --- Connection Parameters ---
+  // --- Connection and configuration Parameters ---
   std::string robot_ip_;               ///< IP address of the robot controller.
   std::string username_;               ///< Username for session authentication.
   std::string password_;               ///< Password for session authentication.
@@ -78,8 +78,21 @@ private:
   int connection_inactivity_timeout_;  ///< Inactivity period (in milliseconds) allowed before the robot stops any movements initiated from this session.
   std::string gripper_name_;           ///< Which gripper is being used.
   uint16_t gripper_modbus_id_;         ///< The modbus ID to communicate with the gripper.
+  size_t actuator_count_;              ///< Number of actuators to control
 
 
+  // --- State and Command Buffers ---
+  std::vector<double> joint_positions_cmd_;   ///< Buffer for position commands sent via BaseCyclic::Refresh().
+  std::vector<double> joint_velocities_cmd_;  ///< Buffer for velocity commands sent via high-level interface.
+  std::vector<double> twist_cmd_;             ///< Buffer for twist commands
+  std::vector<double> joint_positions_;       ///< Buffer for joint position states.
+  std::vector<double> joint_velocities_;      ///< Buffer for joint velocity states.
+  std::vector<double> joint_torques_;         ///< Buffer for joint torque states.
+
+  // Monotonically increasing frame counter for BaseCyclic commands.
+  int base_command_frame_id_; 
+  
+  
   // --- Kortex API Objects ---
   std::shared_ptr<k_api::RouterMQTT> router_mqtt_;
   std::shared_ptr<k_api::Session::SessionClient> session_mqtt_;
@@ -90,33 +103,19 @@ private:
 
   std::shared_ptr<k_api::Base::BaseClient> base_mqtt_;
   std::shared_ptr<k_api::BaseCyclic::BaseCyclicClient> base_cyclic_;
+  k_api::BaseCyclic::Feedback feedback_;
 
-
-  k_api::BaseCyclic::Command base_command_;
+  // Changing active controller on the hardware
+  k_api::Base::ServoingMode arm_mode_;
+  k_api::Common::ModeSelection mode_selection_;
+  k_api::Base::ServoingModeInformation servoing_mode_info_;
 
   // twist temporary command
   k_api::Base::Twist * k_api_twist_;
   k_api::Base::TwistCommand k_api_twist_command_;
 
 
-  size_t actuator_count_;
-  uint32_t cmd_frame_id_;  ///< Monotonically increasing frame counter for BaseCyclic commands.
-
-  // --- State and Command Buffers ---
-  k_api::BaseCyclic::Feedback feedback_;
-  std::vector<double> joint_positions_cmd_;   ///< Buffer for position commands sent via BaseCyclic::Refresh().
-  std::vector<double> joint_velocities_cmd_;  ///< Buffer for velocity commands sent via high-level interface.
-  std::vector<double> twist_cmd_;             ///< Buffer for twist commands
-  std::vector<double> joint_positions_;       ///< Buffer for joint position states.
-  std::vector<double> joint_velocities_;      ///< Buffer for joint velocity states.
-  std::vector<double> joint_torques_;         ///< Buffer for joint torque states.
-  
-
-  // Changing active controller on the hardware
-  k_api::Common::ModeSelection mode_selection_;
-  k_api::Base::ServoingModeInformation servoing_mode_info_;
-
-  // switching auxiliary vars
+  // Mode switching auxiliary vars
   // keeping track of which controller is active so appropriate control mode can be adjusted
   // controller manager sends array of interfaces that should be stopped/started and this is the
   // way to internally collect information on which controller should be stopped and started
@@ -133,43 +132,21 @@ private:
   bool low_level_control_mode_running_;
   bool joint_velocity_control_mode_running_;
   bool twist_control_mode_running_;
-  
-
-  // low_level_control_mode
-
-  // joint/position
-
-  // joint_velocity_control_mode
-
-  // joint/velocity
-
-  // twist_control_mode
-
-  // tcp/linear.x
 
 
-  // joint_trajectory_controller
-  // cartesian_motion_controller
-  // joint_velocity_controller
-  // twist_cotroller
-
-
-
-
-  // Flags I guess
-  k_api::Base::ServoingMode arm_mode_;
+  // Fault management
   std::atomic<bool> in_fault_ = false;
   std::atomic<bool> block_write_ = false;
 
   // --- Private Helper Methods ---
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
   void set_servoing_mode(const k_api::Base::ServoingMode& mode);
+  void start_low_level_mode();
+  void stop_low_level_mode();
 
   void sendJointPositionCommands();
   void sendJointSpeedsCommand();
   void sendTwistCommand();
-
-  int base_command_frame_id_;
 };
 
 }  // namespace kortex3_driver

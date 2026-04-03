@@ -28,8 +28,8 @@ Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   , twist_control_mode_running_(false)
   , base_command_frame_id_(0)
 {
-  RCLCPP_INFO(LOGGER, "Setting severity threshold to DEBUG");
-  auto ret = rcutils_logging_set_logger_level(LOGGER.get_name(), RCUTILS_LOG_SEVERITY_DEBUG);
+  RCLCPP_INFO(LOGGER, "Setting severity threshold to INFO");
+  auto ret = rcutils_logging_set_logger_level(LOGGER.get_name(), RCUTILS_LOG_SEVERITY_INFO);
   if (ret != RCUTILS_RET_OK)
   {
     RCLCPP_ERROR(LOGGER, "Error setting severity: %s", rcutils_get_error_string().str);
@@ -484,12 +484,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
     return hardware_interface::return_type::ERROR;
   }
 
-  // TODO: Currently, if an interface is set to be started while the corresponding control mode is
-  // already running, preform_command_mode_switch will reset that control mode. That is the case,
-  // for example, when switching between joint_trajectory_controller and cartesian_motion_controller
-  // that are both using low level control. I must decide if perform_command_mode_switch should
-  // reset the control mode or do nothing.
-
   return ret_val;
 }
 
@@ -500,30 +494,31 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
 
   if (stop_low_level_control_mode_)
   {
+    stop_low_level_mode();
     low_level_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
   }
   if (stop_joint_velocity_control_mode_)
   {
+    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     joint_velocity_control_mode_running_ = false;
     joint_velocities_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   }
   if (stop_twist_control_mode_)
   {
+    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     twist_control_mode_running_ = false;
     twist_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   }
 
   if (start_low_level_control_mode_)
   {
-    change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
-    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
+    start_low_level_mode();
     joint_velocity_control_mode_running_ = false;
     twist_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
     joint_velocities_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
     low_level_control_mode_running_ = true;
-    // refresh feedback
     feedback_ = base_cyclic_->RefreshFeedback();
   }
   if (start_joint_velocity_control_mode_)
@@ -668,10 +663,14 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
   RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
 
   // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
-  // TODO: check why it makes a noise
-  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+  if (low_level_control_mode_running_)
+  {
+    stop_low_level_mode();
+  }
+  else
+  {
+    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+  }
 
   // Close API sessions
   if (session_udp_)
@@ -740,7 +739,7 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 {
   try
   {
-    // feedback_ = base_cyclic_->RefreshFeedback();
+    feedback_ = base_cyclic_->RefreshFeedback();
 
     for (size_t i = 0; i < feedback_.actuators_size() && i < actuator_count_; ++i)
     {
@@ -764,95 +763,59 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
 {
   if (block_write_)
   {
-    // feedback_ = base_cyclic_->RefreshFeedback();
     return hardware_interface::return_type::OK;
   }
 
   if (!in_fault_)
   {
-    if (low_level_control_mode_running_)
+    if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
     {
-      if (arm_mode_ == k_api::Base::ServoingMode::LOW_LEVEL_SERVOING)
-      {
-        sendJointPositionCommands();
-      }
-    }
-    else if (joint_velocity_control_mode_running_)
-    {
-      if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
+      // High-level control modes
+      if (joint_velocity_control_mode_running_)
       {
         sendJointSpeedsCommand();
       }
-    }
-    else if (twist_control_mode_running_)
-    {
-      if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
+      else if (twist_control_mode_running_)
       {
         sendTwistCommand();
-      }
-    }
-    else
-    {
-      // RCLCPP_DEBUG(LOGGER, "No control mode active!");
-    }
-
-    if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
-    {
-      // Twist controller active
-      if (joint_velocity_control_mode_running_)
-      {
-        // twist control
-        // sendJointSpeedsCommand();
       }
       else
       {
         // Keep alive mode - no controller active
-        // RCLCPP_DEBUG(LOGGER, "No controller active in SINGLE_LEVEL_SERVOING mode!");
+        RCLCPP_DEBUG(LOGGER, "No controller active in SINGLE_LEVEL_SERVOING mode!");
       }
 
-      // gripper control
+      // TODO: gripper control
       // sendGripperCommand(
       //   arm_mode_, gripper_command_position_, gripper_speed_command_, gripper_force_command_);
       // read after write in twist mode
       // feedback_ = base_cyclic_->RefreshFeedback();
     }
-    // else if (
-    //   (arm_mode_ == k_api::Base::ServoingMode::LOW_LEVEL_SERVOING) &&
-    //   (feedback_.base().active_state() == k_api::Common::ARMSTATE_SERVOING_LOW_LEVEL))
     else if (arm_mode_ == k_api::Base::ServoingMode::LOW_LEVEL_SERVOING)
     {
-      // Per joint controller active
+      // Low level control mode
 
-      // gripper control
+      // TODO: gripper control
       // sendGripperCommand(
       //   arm_mode_, gripper_command_position_, gripper_speed_command_, gripper_force_command_);
 
       if (low_level_control_mode_running_)
       {
-        // send commands to the joints
-        // sendJointPositionCommands();
+        sendJointPositionCommands();
       }
       else
       {
         // Keep alive mode - no controller active
-        // feedback_ = base_cyclic_->RefreshFeedback();
-        // RCLCPP_DEBUG(LOGGER, "No controller active in LOW_LEVEL_SERVOING mode !");
+        RCLCPP_DEBUG(LOGGER, "No controller active in LOW_LEVEL_SERVOING mode !");
       }
     }
     else
     {
       // Keep alive mode - no controller active
-      // feedback_ = base_cyclic_->RefreshFeedback();
       RCLCPP_DEBUG(LOGGER,
                    "Fault was not recognized on the robot but combination of Control Mode and Active State "
                    "are not supported!");
     }
-  }
-  else
-  {
-    // this is needed when the robot was faulted
-    // so we can internally conclude it is not faulted anymore
-    // feedback_ = base_cyclic_->RefreshFeedback();
   }
 
   return hardware_interface::return_type::OK;
@@ -929,49 +892,44 @@ void Kortex3HardwareInterfaceLowLevel::set_servoing_mode(const k_api::Base::Serv
   }
 }
 
+void Kortex3HardwareInterfaceLowLevel::start_low_level_mode()
+{
+  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+  set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
+}
+
+void Kortex3HardwareInterfaceLowLevel::stop_low_level_mode()
+{
+  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+  std::this_thread::sleep_for(std::chrono::milliseconds(3500));
+  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+}
+
 void Kortex3HardwareInterfaceLowLevel::sendJointSpeedsCommand()
 {
   try
   {
-    k_api::Base::Action action;
-    action.set_name("ros2_control_velocity_command");
-    auto *js = action.mutable_send_joint_speeds();
-
-    // Convert joint velocities from rad/s (ROS) to deg/s (Kortex API).
-    for (size_t i = 0; i < actuator_count_; ++i) {
-      auto &sp = *js->add_joint_speeds();
-      sp.set_joint_identifier(i);
-      sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
+    k_api::Base::JointSpeeds joint_speeds;
+    for (size_t i = 0; i < actuator_count_; ++i)
+    {
+      auto joint_speed = joint_speeds.add_joint_speeds();
+      joint_speed->set_joint_identifier(i);
+      joint_speed->set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
     }
-    base_mqtt_->ExecuteAction(action);
+    base_mqtt_->SendJointSpeedsCommand(joint_speeds);
   }
   catch (const k_api::KDetailedException& e)
   {
     RCLCPP_ERROR(LOGGER, "Unexpected fault during write(): %s", e.what());
     RCLCPP_ERROR_STREAM(LOGGER, "Error sub-code: " << k_api::SubErrorCodes_Name(
                                     k_api::SubErrorCodes((e.getErrorInfo().getError().error_sub_code()))));
-
-    // return hardware_interface::return_type::ERROR;
   }
 }
 
 void Kortex3HardwareInterfaceLowLevel::sendJointPositionCommands()
 {
-  // Incrementing identifier ensures actuators can reject out of time frames
-  // base_command_.set_frame_id(base_command_.frame_id() + 1);
-  // if (base_command_.frame_id() > 65535)
-  //   base_command_.set_frame_id(0);
-
-  // // update the command for each joint
-  // for (size_t i = 0; i < actuator_count_; i++)
-  // {
-  //   base_command_.mutable_actuators(static_cast<int>(i))
-  //       ->set_position(static_cast<float>(joint_positions_cmd_[i] * 180.0 / M_PI));
-  //   // base_command_.mutable_actuators(static_cast<int>(i))->set_velocity(0.0f);
-  //   base_command_.mutable_actuators(static_cast<int>(i))->set_flags(0);
-  //   base_command_.mutable_actuators(static_cast<int>(i))->set_command_id(base_command_.frame_id());
-  // }
-
   base_command_frame_id_ = base_command_frame_id_ + 1;
   if (base_command_frame_id_ > 65535)
     base_command_frame_id_ = 0;
@@ -1018,12 +976,12 @@ void Kortex3HardwareInterfaceLowLevel::sendJointPositionCommands()
 
 void Kortex3HardwareInterfaceLowLevel::sendTwistCommand()
 {
-  k_api_twist_->set_linear_x(static_cast<float>(twist_cmd_[0]));
-  k_api_twist_->set_linear_y(static_cast<float>(twist_cmd_[1]));
-  k_api_twist_->set_linear_z(static_cast<float>(twist_cmd_[2]));
-  k_api_twist_->set_angular_x(static_cast<float>(twist_cmd_[3]));
-  k_api_twist_->set_angular_y(static_cast<float>(twist_cmd_[4]));
-  k_api_twist_->set_angular_z(static_cast<float>(twist_cmd_[5]));
+  k_api_twist_->set_linear_x(twist_cmd_[0]);
+  k_api_twist_->set_linear_y(twist_cmd_[1]);
+  k_api_twist_->set_linear_z(twist_cmd_[2]);
+  k_api_twist_->set_angular_x(twist_cmd_[3] * 180.0 / M_PI);
+  k_api_twist_->set_angular_y(twist_cmd_[4] * 180.0 / M_PI);
+  k_api_twist_->set_angular_z(twist_cmd_[5] * 180.0 / M_PI);
   base_mqtt_->SendTwistCommand(k_api_twist_command_);
 }
 
