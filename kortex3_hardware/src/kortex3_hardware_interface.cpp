@@ -189,8 +189,7 @@ Kortex3HardwareInterface::Kortex3HardwareInterface()
     gripper_name_(""),
     use_internal_bus_gripper_comm_(false),
     gripper_a_(9),   // Default Modbus ID 9
-    gripper_b_(10),  // Default Modbus ID 10
-    cmd_frame_id_(0)
+    gripper_b_(10)   // Default Modbus ID 10
 {
 }
 
@@ -277,7 +276,6 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
 
   // Initialize state and command vectors.
   joint_velocities_cmd_.resize(actuator_count_, 0.0);
-  joint_positions_cmd_.resize(actuator_count_, 0.0);
   joint_positions_.resize(actuator_count_, 0.0);
   joint_velocities_.resize(actuator_count_, 0.0);
   joint_torques_.resize(actuator_count_, 0.0);
@@ -408,45 +406,11 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
       actuator_count_ = actuator_info.count();
     }
 
-    // 5. Set operating mode to AUTO, then switch to low-level servoing for position control.
+    // 5. Set the initial operating mode for velocity control.
     change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
     last_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
 
-    // 6. Switch to LOW_LEVEL_SERVOING so position setpoints are sent via BaseCyclic::Refresh().
-    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-
-    // Send 30 hold-position sync cycles immediately after mode switch.
-    // IMPORTANT: In LOW_LEVEL_SERVOING the actuators need a BaseCyclic position setpoint
-    // right after the mode transition. Delaying causes Code 50030 on the first Refresh().
-    RCLCPP_INFO(LOGGER, "Synchronizing position with 30 hold cycles...");
-    cmd_frame_id_ = 0;
-    for (int sync = 0; sync < 30; sync++)
-    {
-      auto fb = base_cyclic_udp_->RefreshFeedback();
-
-      // On the first sync cycle, capture the robot's current position as the
-      // initial command so write() holds position until a controller takes over.
-      if (sync == 0) {
-        for (size_t i = 0; i < actuator_count_ && i < (size_t)fb.actuators_size(); ++i) {
-          RCLCPP_DEBUG(LOGGER, "  Act %d: %.3f deg\n", i, fb.actuators(i).position());
-          joint_positions_cmd_[i] = fb.actuators(i).position() * M_PI / 180.0;
-        }
-      }
-
-      k_api::BaseCyclic::Command hold_cmd;
-      hold_cmd.set_frame_id(cmd_frame_id_++);
-      for (int i = 0; i < fb.actuators_size(); ++i) {
-        auto* act = hold_cmd.add_actuators();
-        act->set_flags(0);
-        act->set_position(fb.actuators(i).position());
-        act->set_velocity(0.0f);
-      }
-      base_cyclic_udp_->Refresh(hold_cmd);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    RCLCPP_INFO(LOGGER, "Position synchronized.");
-
-    // 8. Initialize grippers if using internal bus communication
+    // 7. Initialize grippers if using internal bus communication
     if (use_internal_bus_gripper_comm_ && !gripper_name_.empty())
     {
       // Initialize Gripper A if joint name was specified
@@ -528,9 +492,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
     // Gracefully shut down the robot and network connections in order.
     if (base_mqtt_)
     {
-      // Exit low-level servoing before stopping — must be done while connections are open.
-      // set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-      // change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
+      change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     }
     if (session_udp_)
     {
@@ -655,8 +617,6 @@ Kortex3HardwareInterface::export_command_interfaces()
   {
     command_interfaces.emplace_back(hardware_interface::CommandInterface(
       arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_cmd_[i]));
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      arm_joint_names[i], hardware_interface::HW_IF_POSITION, &joint_positions_cmd_[i]));
   }
   return command_interfaces;
 }
@@ -931,80 +891,59 @@ hardware_interface::return_type Kortex3HardwareInterface::write(
     return hardware_interface::return_type::OK;
   }
 
-  // Safety guard: Only send position commands if the robot is in AUTO operating mode.
+  // Safety guard: Only send velocity commands if in the correct operating mode.
   if (last_operating_mode_ != Kinova::Api::Common::OPERATING_MODE_AUTO) {
     return hardware_interface::return_type::OK;
   }
 
-  // Safety guard: Block commands while a program is running or within 1 second after completion.
-  // (Programs cannot run in LOW_LEVEL_SERVOING, so this guard is inactive during normal operation.)
+  // Safety guard: Block velocity commands while program is running or within 1 second after completion.
+  // Check if program is currently active
   if (is_program_active(last_program_status_)) {
     RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
-                          "Position commands blocked: program is currently running (status: %d)",
+                          "Velocity commands blocked: program is currently running (status: %d)",
                           last_program_status_);
     return hardware_interface::return_type::OK;
   }
 
+  // Check if we're within 1 second after program completion
   auto now = std::chrono::steady_clock::now();
   auto time_since_program_end = std::chrono::duration_cast<std::chrono::milliseconds>(
     now - program_end_time_).count();
 
   if (time_since_program_end >= 0 && time_since_program_end < 1000) {
     RCLCPP_DEBUG_THROTTLE(LOGGER, *node_ptr_->get_clock(), 1000,
-                          "Position commands blocked: %ld ms since program ended (blocking for 1 second)",
+                          "Velocity commands blocked: %ld ms since program ended (blocking for 1 second)",
                           time_since_program_end);
     return hardware_interface::return_type::OK;
   }
 
   try {
-    // Build a low-level position command for all arm joints.
-    // Positions are in radians (ROS convention); convert to degrees for the Kortex API.
-    k_api::BaseCyclic::Command command;
-    command.set_frame_id(cmd_frame_id_++);
+    Kinova::Api::Base::Action action;
+    action.set_name("ros2_control_velocity_command");
+    auto *js = action.mutable_send_joint_speeds();
 
+    // Convert joint velocities from rad/s (ROS) to deg/s (Kortex API).
     for (size_t i = 0; i < actuator_count_; ++i) {
-
-      double cmd = joint_positions_cmd_[i];
-      double max_velocity = 0.0524; // rad/s
-      double dt = 0.01; // 10ms cycle time @ 100Hz
-      double max_position_increment = 3; // rad
-      double delta = joint_positions_cmd_[i] - joint_positions_[i];
-      double direction = (delta >= 0.0) ? 1.0 : -1.0;
-
-      if (delta > max_position_increment) {
-        // Clamp the position command
-        cmd = joint_positions_[i] + direction * max_position_increment;
-      } 
-      
-      joint_positions_cmd_[i] = cmd;
-
-      auto* act = command.add_actuators();
-      act->set_flags(0);
-      act->set_position(static_cast<float>(joint_positions_cmd_[i] * 180.0 / M_PI));
-      act->set_velocity(0.0f);  // No velocity feedforward; robot uses internal limits.
+      auto &sp = *js->add_joint_speeds();
+      sp.set_joint_identifier(i);
+      sp.set_value(static_cast<float>(joint_velocities_cmd_[i] * 180.0 / M_PI));
     }
-    base_cyclic_udp_->Refresh(command);
-
-    // Debug: print commanded positions at ~1 Hz
-    if (true) {
-      std::string dbg = "write() positions (deg):";
-      for (size_t i = 0; i < actuator_count_; ++i) {
-        dbg += " J" + std::to_string(i) + "=" +
-               std::to_string(joint_positions_cmd_[i] * 180.0 / M_PI);
-      }
-      RCLCPP_INFO(LOGGER, "%s", dbg.c_str());
-    }
+    base_mqtt_->ExecuteAction(action);
   }
   catch (const Kinova::Api::KDetailedException &e) {
     std::string error_msg = e.what();
 
+    // Check if error is INVALID_PARAM - this usually means robot is in fault state
+    // but read() hasn't detected it yet (race condition)
     if (error_msg.find("INVALID_PARAM") != std::string::npos ||
         error_msg.find("ROBOT_IN_FAULT") != std::string::npos ||
         error_msg.find("WRONG_MODE") != std::string::npos) {
+      // Robot likely in fault state - set flag and let read() handle proper detection/logging
       RCLCPP_DEBUG(LOGGER, "Command rejected - robot likely in fault. Will be detected in read().");
       in_fault_ = true;
-      return hardware_interface::return_type::OK;
+      return hardware_interface::return_type::OK;  // Return OK, not ERROR - this is expected
     } else {
+      // Unexpected error - log as ERROR
       RCLCPP_ERROR(LOGGER, "Unexpected fault during write(): %s", e.what());
       RCLCPP_ERROR(LOGGER, "To recover, call the /kortex3_hardware/clear_faults service.");
       in_fault_ = true;
@@ -1095,23 +1034,6 @@ void Kortex3HardwareInterface::change_operating_mode(
   catch (const k_api::KDetailedException &ex)
   {
     RCLCPP_ERROR(LOGGER, "Failed to change operating mode: %s", ex.what());
-  }
-}
-
-void Kortex3HardwareInterface::set_servoing_mode(
-  const k_api::Base::ServoingMode &mode)
-{
-  try
-  {
-    k_api::Base::ServoingModeInformation servoing_mode;
-    servoing_mode.set_servoing_mode(mode);
-    base_mqtt_->SetServoingMode(servoing_mode);
-    RCLCPP_INFO(LOGGER, "Servoing mode set to %s.",
-      k_api::Base::ServoingMode_Name(mode).c_str());
-  }
-  catch (const k_api::KDetailedException &ex)
-  {
-    RCLCPP_ERROR(LOGGER, "Failed to set servoing mode: %s", ex.what());
   }
 }
 
@@ -1633,86 +1555,6 @@ void Kortex3HardwareInterface::handle_simulate_estop(
     response->success = true;
     response->message = "To clear active faults, call: ros2 service call /kortex3_hardware/clear_faults kortex3_hardware/srv/ClearFaults \"{}\"";
   }
-}
-
-bool Kortex3HardwareInterface::dump_calibration(const std::string& serial)
-{
-  try
-  {
-    // 1. Fetch the calibration data blob from the robot via MQTT.
-    auto blob = base_mqtt_->ExportArmCalibration();
-
-    // 2. Determine the path to save the calibration files.
-    // This assumes a companion description package (e.g., link6_description).
-    auto desc_share = ament_index_cpp::get_package_share_directory("link6_description");
-    fs::path cal_dir = fs::path(desc_share) / "calibration";
-    fs::create_directories(cal_dir);
-    fs::path zip_path = cal_dir / (serial + ".zip");
-
-    // 3. Write the fetched data to a .zip file.
-    std::ofstream out(zip_path, std::ios::binary | std::ios::trunc);
-    for (auto b : blob.data()) out.put(static_cast<char>(b));
-    out.close();
-    RCLCPP_INFO(LOGGER, "Calibration ZIP saved to %s", zip_path.c_str());
-
-    // 4. Unzip calib.xml from the archive for the generator script to use.
-    // Note: This creates an external dependency on the `unzip` command.
-    std::string cmd = "unzip -oq " + zip_path.string() + " calib.xml -d " + cal_dir.string();
-    if (std::system(cmd.c_str()) != 0) {
-      RCLCPP_WARN(LOGGER, "unzip command failed; XML may already exist or unzip is not installed.");
-    }
-    return true;
-  }
-  catch (const std::exception& ex)
-  {
-    RCLCPP_ERROR(LOGGER, "dump_calibration() failed: %s", ex.what());
-    return false;
-  }
-}
-
-bool Kortex3HardwareInterface::calibrate_robot()
-{
-  // Kortex 3 does not yet expose a unique serial number, so we use a fixed name.
-  const std::string serial = "link6";
-  if (!dump_calibration(serial))
-  {
-      return false;
-  }
-
-  // Define paths for all required files and scripts.
-  const fs::path share_dir = ament_index_cpp::get_package_share_directory("link6_description");
-  const fs::path cal_dir   = share_dir / "calibration";
-  const fs::path xml_path  = cal_dir / "calib.xml";
-  const fs::path xacro_nom = share_dir / "urdf" / "link6_nominal.xacro";
-  const fs::path temp_nom  = cal_dir  / "link6_nominal.urdf";
-  const fs::path py_script = share_dir / "scripts" / "calibrated_urdf_generator.py";
-  const fs::path out_xacro = share_dir / "urdf"   / "link6_calibrated.xacro";
-
-  // 1. Expand the nominal Xacro to a temporary URDF file.
-  // Note: This creates an external dependency on `xacro`.
-  std::ostringstream xacro_cmd;
-  xacro_cmd << "xacro " << xacro_nom << " -o " << temp_nom;
-  if (std::system(xacro_cmd.str().c_str()) != 0)
-  {
-    RCLCPP_ERROR(LOGGER, "xacro failed while expanding nominal model.");
-    return false;
-  }
-
-  // 2. Invoke the Python generator script to create the calibrated Xacro file.
-  // Note: This creates an external dependency on `python3` and the script itself.
-  std::ostringstream python_cmd;
-  python_cmd << "python3 " << py_script
-             << " --urdf_path "        << temp_nom
-             << " --calibration_file " << xml_path
-             << " --output_file "      << out_xacro;
-  if (std::system(python_cmd.str().c_str()) != 0)
-  {
-    RCLCPP_WARN(LOGGER, "Calibration generation script failed; will use nominal model.");
-    return false;
-  }
-
-  RCLCPP_INFO(LOGGER, "Calibrated Xacro written to %s", out_xacro.c_str());
-  return true;
 }
 
 void Kortex3HardwareInterface::handle_run_program(
