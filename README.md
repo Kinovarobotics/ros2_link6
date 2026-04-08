@@ -85,9 +85,9 @@
 
 #### 4.1.1 Install Dependencies
 
-1. **ROS2 Jazzy** on Ubuntu 24.04  
+1. **ROS2 Humble** on Ubuntu 22.04  
    Follow the official guide:  
-   https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
+   https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
 
 2. **Ignition Harmonic (Gazebo)**  
    See “ROS2 Integration” section here:  
@@ -191,7 +191,7 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
-    ├── ros2_kortex3.jazzy.repos
+    ├── ros2_kortex3.humble.repos
     ├── LICENSE
     └── README.md
 ```
@@ -218,9 +218,9 @@ sudo apt update
 sudo apt install \
   python3-rosdep \
   python3-colcon-clean \
-  ros-jazzy-gz-ros2-control \
-  ros-jazzy-gz-ros2-control-demos \
-  ros-jazzy-gripper-controllers
+  ros-${ROS_DISTRO}-gz-ros2-control \
+  ros-${ROS_DISTRO}-gz-ros2-control-demos \
+  ros-${ROS_DISTRO}-gripper-controllers
 
 ```
 
