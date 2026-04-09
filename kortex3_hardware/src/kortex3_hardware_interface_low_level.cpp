@@ -1,6 +1,8 @@
 
 #include <chrono>
+#include <cmath>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "kortex3_hardware/kortex3_hardware_interface_low_level.hpp"
@@ -27,6 +29,20 @@ Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   , joint_velocity_control_mode_running_(false)
   , twist_control_mode_running_(false)
   , base_command_frame_id_(0)
+  , use_internal_bus_gripper_comm_(false)
+  , gripper_a_(9)
+  , gripper_b_(10)
+  , gripper_a_pos_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_a_vel_(0.0)
+  , gripper_a_cmd_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_b_pos_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_b_vel_(0.0)
+  , gripper_b_cmd_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_a_cmd_atomic_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_a_pos_atomic_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_b_cmd_atomic_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_b_pos_atomic_(std::numeric_limits<double>::quiet_NaN())
+  , gripper_thread_running_(false)
 {
   RCLCPP_INFO(LOGGER, "Setting severity threshold to INFO");
   auto ret = rcutils_logging_set_logger_level(LOGGER.get_name(), RCUTILS_LOG_SEVERITY_INFO);
@@ -97,7 +113,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   {
     RCLCPP_INFO(LOGGER, "Realtime port used '%d'", port_realtime_);
   }
-  // TODO: Add a description for the parameter
+  // Inactivity period (in milliseconds) allowed before the session times out and closes on its own
   session_inactivity_timeout_ = std::stoi(info_.hardware_parameters["session_inactivity_timeout_ms"]);
   if (session_inactivity_timeout_ <= 0)
   {
@@ -108,7 +124,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   {
     RCLCPP_INFO(LOGGER, "Session inactivity timeout is '%d'", session_inactivity_timeout_);
   }
-  // TODO: Add a description for the parameer
+  // Inactivity period (in milliseconds) allowed before the robot stops any movements initiated from this session
   connection_inactivity_timeout_ = std::stoi(info_.hardware_parameters["connection_inactivity_timeout_ms"]);
   if (connection_inactivity_timeout_ <= 0)
   {
@@ -119,17 +135,33 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   {
     RCLCPP_INFO(LOGGER, "Connection inactivity timeout is '%d'", connection_inactivity_timeout_);
   }
-  // TODO: Load gripper parameters
-  // gripper joint name
-  // gripper_joint_name_ = info_.hardware_parameters["gripper_joint_name"];
-  // if (gripper_joint_name_.empty())
-  // {
-  //   RCLCPP_ERROR(LOGGER, "Gripper joint name is empty!");
-  // }
-  // else
-  // {
-  //   RCLCPP_INFO(LOGGER, "Gripper joint name is '%s'", gripper_joint_name_.c_str());
-  // }
+  // Load gripper parameters (all optional)
+  if (info_.hardware_parameters.count("use_internal_bus_gripper_comm"))
+  {
+    const auto & v = info_.hardware_parameters.at("use_internal_bus_gripper_comm");
+    use_internal_bus_gripper_comm_ = (v == "true" || v == "True");
+    if (use_internal_bus_gripper_comm_)
+      RCLCPP_INFO(LOGGER, "Using internal bus communication for grippers.");
+  }
+  if (use_internal_bus_gripper_comm_)
+  {
+    if (info_.hardware_parameters.count("gripper_joint_name"))
+      gripper_a_.joint_name_ = info_.hardware_parameters.at("gripper_joint_name");
+    if (info_.hardware_parameters.count("gripper_modbus_id"))
+      gripper_a_.modbus_id_ = static_cast<uint16_t>(
+        std::stoul(info_.hardware_parameters.at("gripper_modbus_id")));
+    if (info_.hardware_parameters.count("gripper_b_joint_name"))
+      gripper_b_.joint_name_ = info_.hardware_parameters.at("gripper_b_joint_name");
+    if (info_.hardware_parameters.count("gripper_b_modbus_id"))
+      gripper_b_.modbus_id_ = static_cast<uint16_t>(
+        std::stoul(info_.hardware_parameters.at("gripper_b_modbus_id")));
+    if (!gripper_a_.joint_name_.empty())
+      RCLCPP_INFO(LOGGER, "Gripper A: joint='%s' modbus_id=%u",
+                  gripper_a_.joint_name_.c_str(), gripper_a_.modbus_id_);
+    if (!gripper_b_.joint_name_.empty())
+      RCLCPP_INFO(LOGGER, "Gripper B: joint='%s' modbus_id=%u",
+                  gripper_b_.joint_name_.c_str(), gripper_b_.modbus_id_);
+  }
 
   // Check if expected command interfaces are present
   for (const hardware_interface::ComponentInfo & joint : info_.joints)
@@ -156,8 +188,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
     }
   }
 
-  // Initialize state and command vectors
-  actuator_count_ = info_.joints.size();
+  // Initialize state and command vectors.
+  // Gripper joints are handled separately; only count arm actuators.
+  actuator_count_ = 0;
+  for (const auto & joint : info_.joints)
+  {
+    if (joint.name != gripper_a_.joint_name_ && joint.name != gripper_b_.joint_name_)
+      actuator_count_++;
+  }
 
   // The command interfaces need to be set to Nan if the joint trajectory controller is operating in open loop
   // See: https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/parameters.html
@@ -173,21 +211,9 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   // initialize kortex api twist commandd
   {
     k_api_twist_command_.set_reference_frame(k_api::Common::CARTESIAN_REFERENCE_FRAME_TOOL);
-    // command.set_duration = execute time (milliseconds) according to the api ->
-    // (not implemented yet)
-    // see: https://github.com/Kinovarobotics/kortex/blob/master/api_cpp/doc/markdown/messages/Base/TwistCommand.md
     k_api_twist_command_.set_duration(0);
     k_api_twist_ = k_api_twist_command_.mutable_twist();
   }
-
-  // TODO: Check and report if using internal bus for gripper
-  // if (
-  //   (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "true") ||
-  //   (info_.hardware_parameters["use_internal_bus_gripper_comm"] == "True"))
-  // {
-  //   use_internal_bus_gripper_comm_ = true;
-  //   RCLCPP_INFO(LOGGER, "Using internal bus communication for gripper!");
-  // }
 
   RCLCPP_INFO(LOGGER, "Hardware Interface successfully initialized.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -201,25 +227,24 @@ std::vector<hardware_interface::StateInterface> Kortex3HardwareInterfaceLowLevel
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
-    // TODO: Export gripper interfaces
-    // if (info_.joints[i].name == gripper_a_.joint_name_)
-    // {
-    //   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_.position_));
-    //   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_a_.velocity_));
-    // }
-    // else if (info_.joints[i].name == gripper_b_.joint_name_)
-    // {
-    //   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_.position_));
-    //   state_interfaces.emplace_back(hardware_interface::StateInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_b_.velocity_));
-    // }
-    // else
-    // {
-    arm_joint_names.emplace_back(info_.joints[i].name);
-    // }
+    if (!gripper_a_.joint_name_.empty() && info_.joints[i].name == gripper_a_.joint_name_)
+    {
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_pos_));
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_a_vel_));
+    }
+    else if (!gripper_b_.joint_name_.empty() && info_.joints[i].name == gripper_b_.joint_name_)
+    {
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_pos_));
+      state_interfaces.emplace_back(hardware_interface::StateInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &gripper_b_vel_));
+    }
+    else
+    {
+      arm_joint_names.emplace_back(info_.joints[i].name);
+    }
   }
 
   for (std::size_t i = 0; i < arm_joint_names.size(); i++)
@@ -242,21 +267,20 @@ std::vector<hardware_interface::CommandInterface> Kortex3HardwareInterfaceLowLev
 
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
-    // TODO: Export gripper interfaces
-    // if (info_.joints[i].name == gripper_a_.joint_name_)
-    // {
-    //   command_interfaces.emplace_back(hardware_interface::CommandInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_.command_position_));
-    // }
-    // else if (info_.joints[i].name == gripper_b_.joint_name_)
-    // {
-    //   command_interfaces.emplace_back(hardware_interface::CommandInterface(
-    //     info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_.command_position_));
-    // }
-    // else
-    // {
-    arm_joint_names.emplace_back(info_.joints[i].name);
-    // }
+    if (!gripper_a_.joint_name_.empty() && info_.joints[i].name == gripper_a_.joint_name_)
+    {
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_a_cmd_));
+    }
+    else if (!gripper_b_.joint_name_.empty() && info_.joints[i].name == gripper_b_.joint_name_)
+    {
+      command_interfaces.emplace_back(hardware_interface::CommandInterface(
+        info_.joints[i].name, hardware_interface::HW_IF_POSITION, &gripper_b_cmd_));
+    }
+    else
+    {
+      arm_joint_names.emplace_back(info_.joints[i].name);
+    }
   }
 
   for (std::size_t i = 0; i < arm_joint_names.size(); i++)
@@ -306,20 +330,10 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
   {
     for (auto& joint : info_.joints)
     {
-      // TODO: Include gripper joints
-      // if (
-      //   key == joint.name + "/" + hardware_interface::HW_IF_POSITION &&
-      //   joint.name == gripper_joint_name_)
-      // {
-      //   stop_modes_.emplace_back(StopStartInterface::STOP_GRIPPER);
-      //   continue;
-      // }
-      // if (
-      //   key == joint.name + "/" + hardware_interface::HW_IF_VELOCITY &&
-      //   joint.name == gripper_joint_name_)
-      // {
-      //   continue;
-      // }
+      // Gripper joints are managed by the background thread; skip them here.
+      if (joint.name == gripper_a_.joint_name_ || joint.name == gripper_b_.joint_name_)
+        continue;
+
       if (key == joint.name + "/" + hardware_interface::HW_IF_POSITION)
       {
         stop_modes_.emplace_back(StopStartInterface::STOP_POS);
@@ -340,33 +354,17 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
     {
       stop_modes_.emplace_back(StopStartInterface::STOP_TWIST);
     }
-    // TODO: Include fault controller joints
-    // if ((key == "reset_fault/command") || (key == "reset_fault/async_success"))
-    // {
-    //   stop_modes_.emplace_back(StopStartInterface::STOP_FAULT_CTRL);
-    // }
   }
 
   // Starting interfaces
-  // add start interface per joint in tmp var for later check
   for (const auto& key : start_interfaces)
   {
     for (auto& joint : info_.joints)
     {
-      // TODO: Include gripper joints
-      // if (
-      //   key == joint.name + "/" + hardware_interface::HW_IF_POSITION &&
-      //   joint.name == gripper_joint_name_)
-      // {
-      //   start_modes_.emplace_back(StopStartInterface::START_GRIPPER);
-      //   continue;
-      // }
-      // if (
-      //   key == joint.name + "/" + hardware_interface::HW_IF_VELOCITY &&
-      //   joint.name == gripper_joint_name_)
-      // {
-      //   continue;
-      // }
+      // Gripper joints are managed by the background thread; skip them here.
+      if (joint.name == gripper_a_.joint_name_ || joint.name == gripper_b_.joint_name_)
+        continue;
+
       if (key == joint.name + "/" + hardware_interface::HW_IF_POSITION)
       {
         start_modes_.emplace_back(StopStartInterface::START_POS);
@@ -387,11 +385,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
     {
       start_modes_.emplace_back(StopStartInterface::START_TWIST);
     }
-    // TODO: Include fault controller joints
-    // if ((key == "reset_fault/command") || (key == "reset_fault/async_success"))
-    // {
-    //   start_modes_.emplace_back(StopStartInterface::START_FAULT_CTRL);
-    // }
   }
 
   // prepare flags for performing the switch
@@ -410,21 +403,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
   {
     stop_twist_control_mode_ = true;
   }
-  // TODO: Include the gripper and fault controllers
-  // if (
-  //   !stop_modes_.empty() &&
-  //   std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_GRIPPER) !=
-  //     stop_modes_.end())
-  // {
-  //   stop_gripper_controller_ = true;
-  // }
-  // if (
-  //   !stop_modes_.empty() &&
-  //   std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_FAULT_CTRL) !=
-  //     stop_modes_.end())
-  // {
-  //   stop_fault_controller_ = true;
-  // }
 
   if (!start_modes_.empty() &&
       (std::find(start_modes_.begin(), start_modes_.end(), StopStartInterface::START_POS) != start_modes_.end()))
@@ -441,21 +419,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
   {
     start_twist_control_mode_ = true;
   }
-  // TODO: Include the gripper and fault controllers
-  // if (
-  //   !start_modes_.empty() &&
-  //   (std::find(start_modes_.begin(), start_modes_.end(), StopStartInterface::START_GRIPPER) !=
-  //    start_modes_.end()))
-  // {
-  //   start_gripper_controller_ = true;
-  // }
-  // if (
-  //   !start_modes_.empty() &&
-  //   (std::find(start_modes_.begin(), start_modes_.end(), StopStartInterface::START_FAULT_CTRL) !=
-  //    start_modes_.end()))
-  // {
-  //   start_fault_controller_ = true;
-  // }
 
   // Handle exclusiveness between low_level, joint velocity, and twist control modes
   if ((start_low_level_control_mode_ && start_joint_velocity_control_mode_) ||
@@ -539,16 +502,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
     twist_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
     twist_control_mode_running_ = true;
   }
-  // TODO: Include gripper and fault controllers
-  // if (start_gripper_controller_)
-  // {
-  //   gripper_command_position_ = gripper_position_;
-  //   gripper_controller_running_ = true;
-  // }
-  // if (start_fault_controller_)
-  // {
-  //   fault_controller_running_ = true;
-  // }
 
   // reset auxiliary switching booleans
   stop_low_level_control_mode_ = stop_twist_control_mode_ = stop_joint_velocity_control_mode_ = false;
@@ -645,6 +598,47 @@ Kortex3HardwareInterfaceLowLevel::on_activate(const rclcpp_lifecycle::State& /*p
       }
     }
 
+    // Initialize grippers over the shared MQTT session
+    if (use_internal_bus_gripper_comm_)
+    {
+      if (!gripper_a_.joint_name_.empty())
+      {
+        if (!gripper_a_.initialize(router_mqtt_, LOGGER))
+        {
+          RCLCPP_ERROR(LOGGER, "Failed to initialize Gripper A.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+        auto pos = gripper_a_.readPosition(gripper_mtx_, LOGGER);
+        double init = pos.has_value() ? pos.value() : 0.0;
+        gripper_a_pos_ = init;
+        gripper_a_cmd_ = init;
+        gripper_a_pos_atomic_.store(init, std::memory_order_relaxed);
+        gripper_a_cmd_atomic_.store(init, std::memory_order_relaxed);
+        RCLCPP_INFO(LOGGER, "Gripper A initial position: %.4f m", init);
+      }
+      if (!gripper_b_.joint_name_.empty())
+      {
+        if (!gripper_b_.initialize(router_mqtt_, LOGGER))
+        {
+          RCLCPP_ERROR(LOGGER, "Failed to initialize Gripper B.");
+          return hardware_interface::CallbackReturn::ERROR;
+        }
+        auto pos = gripper_b_.readPosition(gripper_mtx_, LOGGER);
+        double init = pos.has_value() ? pos.value() : 0.0;
+        gripper_b_pos_ = init;
+        gripper_b_cmd_ = init;
+        gripper_b_pos_atomic_.store(init, std::memory_order_relaxed);
+        gripper_b_cmd_atomic_.store(init, std::memory_order_relaxed);
+        RCLCPP_INFO(LOGGER, "Gripper B initial position: %.4f m", init);
+      }
+
+      // Launch the background thread that handles all Modbus I/O at ~20 Hz.
+      // The CM update loop only touches the atomic buffers (nanosecond operations).
+      gripper_thread_running_.store(true, std::memory_order_relaxed);
+      gripper_thread_ = std::thread(&Kortex3HardwareInterfaceLowLevel::gripperThreadLoop, this);
+      RCLCPP_INFO(LOGGER, "Gripper background thread started.");
+    }
+
     RCLCPP_INFO(LOGGER, "Kortex3 Hardware Interface successfully activated.");
     return hardware_interface::CallbackReturn::SUCCESS;
   }
@@ -661,6 +655,17 @@ hardware_interface::CallbackReturn
 Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /*previous_state*/)
 {
   RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
+
+  // Stop the gripper background thread before closing the MQTT session it uses.
+  if (gripper_thread_running_.load(std::memory_order_relaxed))
+  {
+    gripper_thread_running_.store(false, std::memory_order_relaxed);
+    if (gripper_thread_.joinable())
+      gripper_thread_.join();
+    RCLCPP_INFO(LOGGER, "Gripper background thread stopped.");
+  }
+  if (!gripper_a_.joint_name_.empty()) gripper_a_.shutdown(gripper_mtx_);
+  if (!gripper_b_.joint_name_.empty()) gripper_b_.shutdown(gripper_mtx_);
 
   // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
   if (low_level_control_mode_running_)
@@ -695,7 +700,6 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
       RCLCPP_ERROR(LOGGER, "Error closing MQTT session: %s", e.what());
     }
   }
-
   // Deactivate the router and cleanly disconnect from the transport object
   if (router_mqtt_)
   {
@@ -716,16 +720,6 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
       RCLCPP_ERROR(LOGGER, "Error disconnecting UDP transport: %s", e.what());
     }
   }
-
-  // TODO: Shutdown grippers
-  // if (!gripper_a_.joint_name_.empty())
-  // {
-  //   gripper_a_.shutdown(gripper_mtx_);
-  // }
-  // if (!gripper_b_.joint_name_.empty())
-  // {
-  //   gripper_b_.shutdown(gripper_mtx_);
-  // }
 
   // Memory handling
   delete k_api_twist_;
@@ -753,6 +747,16 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
   {
     RCLCPP_ERROR(LOGGER, "Robot feedback error: %s", ex.what());
     return hardware_interface::return_type::ERROR;
+  }
+
+  // Copy gripper positions from atomic buffers written by the background thread.
+  // This is a nanosecond operation — no Modbus I/O on the CM thread.
+  if (use_internal_bus_gripper_comm_)
+  {
+    if (!gripper_a_.joint_name_.empty())
+      gripper_a_pos_ = gripper_a_pos_atomic_.load(std::memory_order_relaxed);
+    if (!gripper_b_.joint_name_.empty())
+      gripper_b_pos_ = gripper_b_pos_atomic_.load(std::memory_order_relaxed);
   }
 
   return hardware_interface::return_type::OK;
@@ -784,20 +788,10 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
         // Keep alive mode - no controller active
         RCLCPP_DEBUG(LOGGER, "No controller active in SINGLE_LEVEL_SERVOING mode!");
       }
-
-      // TODO: gripper control
-      // sendGripperCommand(
-      //   arm_mode_, gripper_command_position_, gripper_speed_command_, gripper_force_command_);
-      // read after write in twist mode
-      // feedback_ = base_cyclic_->RefreshFeedback();
     }
     else if (arm_mode_ == k_api::Base::ServoingMode::LOW_LEVEL_SERVOING)
     {
       // Low level control mode
-
-      // TODO: gripper control
-      // sendGripperCommand(
-      //   arm_mode_, gripper_command_position_, gripper_speed_command_, gripper_force_command_);
 
       if (low_level_control_mode_running_)
       {
@@ -816,6 +810,16 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
                    "Fault was not recognized on the robot but combination of Control Mode and Active State "
                    "are not supported!");
     }
+  }
+
+  // Forward gripper commands to the background thread via atomics.
+  // This is a nanosecond operation — no Modbus I/O on the CM thread.
+  if (use_internal_bus_gripper_comm_)
+  {
+    if (!gripper_a_.joint_name_.empty() && !std::isnan(gripper_a_cmd_))
+      gripper_a_cmd_atomic_.store(gripper_a_cmd_, std::memory_order_relaxed);
+    if (!gripper_b_.joint_name_.empty() && !std::isnan(gripper_b_cmd_))
+      gripper_b_cmd_atomic_.store(gripper_b_cmd_, std::memory_order_relaxed);
   }
 
   return hardware_interface::return_type::OK;
@@ -940,6 +944,7 @@ void Kortex3HardwareInterfaceLowLevel::sendJointPositionCommands()
   {
     auto* actuator = command.add_actuators();
     actuator->set_flags(0);
+    actuator->set_torque_joint(0.0f);  // Force PID to accumulate gravity comp
     actuator->set_position(joint_positions_cmd_[i] * 180.0 / M_PI);
     actuator->set_velocity(joint_velocities_cmd_[i] * 180.0 / M_PI);
   }
@@ -983,6 +988,44 @@ void Kortex3HardwareInterfaceLowLevel::sendTwistCommand()
   k_api_twist_->set_angular_y(twist_cmd_[4] * 180.0 / M_PI);
   k_api_twist_->set_angular_z(twist_cmd_[5] * 180.0 / M_PI);
   base_mqtt_->SendTwistCommand(k_api_twist_command_);
+}
+
+void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
+{
+  // Run at ~20 Hz. GripperController::sendCommand and readPosition have their own
+  // internal rate limiting, so calling them every iteration is safe.
+  constexpr auto period = std::chrono::milliseconds(50);
+  auto next_wakeup = std::chrono::steady_clock::now() + period;
+
+  while (gripper_thread_running_.load(std::memory_order_relaxed))
+  {
+    if (!gripper_a_.joint_name_.empty() && gripper_a_.initialized_)
+    {
+      // Read position from hardware and publish to atomic
+      auto pos = gripper_a_.readPosition(gripper_mtx_, LOGGER);
+      if (pos.has_value())
+        gripper_a_pos_atomic_.store(pos.value(), std::memory_order_relaxed);
+
+      // Fetch the latest command written by the CM thread and send to hardware
+      const double cmd = gripper_a_cmd_atomic_.load(std::memory_order_relaxed);
+      if (!std::isnan(cmd))
+        gripper_a_.sendCommand(cmd, gripper_mtx_);
+    }
+
+    if (!gripper_b_.joint_name_.empty() && gripper_b_.initialized_)
+    {
+      auto pos = gripper_b_.readPosition(gripper_mtx_, LOGGER);
+      if (pos.has_value())
+        gripper_b_pos_atomic_.store(pos.value(), std::memory_order_relaxed);
+
+      const double cmd = gripper_b_cmd_atomic_.load(std::memory_order_relaxed);
+      if (!std::isnan(cmd))
+        gripper_b_.sendCommand(cmd, gripper_mtx_);
+    }
+
+    std::this_thread::sleep_until(next_wakeup);
+    next_wakeup += period;
+  }
 }
 
 }  // namespace kortex3_driver

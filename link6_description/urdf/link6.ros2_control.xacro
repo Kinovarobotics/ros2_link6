@@ -141,32 +141,6 @@
           <state_interface name="velocity" />
           <state_interface name="effort" />
         </joint>
-
-        <!-- If using the real robot, we need to define gripper joints for the hardware interface -->
-        <xacro:unless value="${use_fake_hardware or sim_gazebo}">
-          <xacro:unless value="${not gripper}">
-            <xacro:if value="${use_internal_bus_gripper_comm}">
-
-              <!-- Gripper A joint (only if gripper_joint_name is defined and not empty) -->
-              <xacro:unless value="${gripper_joint_name == '' or gripper_joint_name == None}">
-                <joint name="${prefix}${gripper_joint_name}">
-                  <command_interface name="position" />
-                  <state_interface name="position"/>
-                  <state_interface name="velocity"/>
-                </joint>
-              </xacro:unless>
-
-              <!-- Gripper B joint (only if gripper_b_joint_name is defined and not empty) -->
-              <xacro:unless value="${gripper_b_joint_name == '' or gripper_b_joint_name == None}">
-                <joint name="${prefix}${gripper_b_joint_name}">
-                  <command_interface name="position" />
-                  <state_interface name="position"/>
-                  <state_interface name="velocity"/>
-                </joint>
-              </xacro:unless>
-            </xacro:if>
-          </xacro:unless>
-        </xacro:unless>
       </xacro:unless>
 
       <xacro:if value="${low_level_mode}">
@@ -266,6 +240,32 @@
           <state_interface name="effort" />
         </joint>        
       </xacro:if>
+
+      <!-- If using the real robot, we need to define gripper joints for the hardware interface -->
+      <xacro:unless value="${use_fake_hardware or sim_gazebo}">
+        <xacro:unless value="${not gripper}">
+          <xacro:if value="${use_internal_bus_gripper_comm}">
+
+            <!-- Gripper A joint (only if gripper_joint_name is defined and not empty) -->
+            <xacro:unless value="${gripper_joint_name == '' or gripper_joint_name == None}">
+              <joint name="${prefix}${gripper_joint_name}">
+                <command_interface name="position" />
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+              </joint>
+            </xacro:unless>
+
+            <!-- Gripper B joint (only if gripper_b_joint_name is defined and not empty) -->
+            <xacro:unless value="${gripper_b_joint_name == '' or gripper_b_joint_name == None}">
+              <joint name="${prefix}${gripper_b_joint_name}">
+                <command_interface name="position" />
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+              </joint>
+            </xacro:unless>
+          </xacro:if>
+        </xacro:unless>
+      </xacro:unless>
       
     </ros2_control>
   </xacro:macro>

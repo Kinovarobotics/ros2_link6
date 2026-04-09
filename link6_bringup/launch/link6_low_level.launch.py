@@ -154,8 +154,8 @@ def launch_setup(context, *args, **kwargs):
         joint_velocity_controller_spawner,
         twist_controller_spawner,
     ]
-    # if gripper.perform(context) != "":
-    #     nodes_to_start.append(robotiq_gripper_controller_spawner)
+    if gripper.perform(context) != "":
+        nodes_to_start.append(robotiq_gripper_controller_spawner)
     return nodes_to_start
 
 def generate_launch_description():

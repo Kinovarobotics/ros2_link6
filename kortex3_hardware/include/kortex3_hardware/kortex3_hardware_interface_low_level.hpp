@@ -2,8 +2,15 @@
 #define KORTEX_HARDWARE_INTERFACE
 
 // System Headers
+#include <atomic>
+#include <limits>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
+
+// Gripper
+#include "kortex3_hardware/gripper_controller.hpp"
 
 // Kortex 3 API Headers
 #include "SessionClientRpc.h"
@@ -137,6 +144,32 @@ private:
   // Fault management
   std::atomic<bool> in_fault_ = false;
   std::atomic<bool> block_write_ = false;
+
+  // --- Gripper ---
+  bool use_internal_bus_gripper_comm_;
+  GripperController gripper_a_;
+  GripperController gripper_b_;
+  std::mutex gripper_mtx_;   ///< Shared Modbus bus mutex for all gripper operations.
+
+  // CM-thread-owned buffers exported via hardware interfaces
+  double gripper_a_pos_;
+  double gripper_a_vel_;
+  double gripper_a_cmd_;
+  double gripper_b_pos_;
+  double gripper_b_vel_;
+  double gripper_b_cmd_;
+
+  // Lock-free exchange between the CM update thread and the gripper background thread.
+  // CM write() stores to *_cmd_atomic_; CM read() loads from *_pos_atomic_.
+  // Background thread reads *_cmd_atomic_ and writes *_pos_atomic_.
+  std::atomic<double> gripper_a_cmd_atomic_;
+  std::atomic<double> gripper_a_pos_atomic_;
+  std::atomic<double> gripper_b_cmd_atomic_;
+  std::atomic<double> gripper_b_pos_atomic_;
+
+  std::atomic<bool> gripper_thread_running_;
+  std::thread gripper_thread_;
+  void gripperThreadLoop();
 
   // --- Private Helper Methods ---
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
