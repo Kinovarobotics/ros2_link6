@@ -85,9 +85,9 @@
 
 #### 4.1.1 Install Dependencies
 
-1. **ROS2 Jazzy** on Ubuntu 24.04  
+1. **ROS2 Humble** on Ubuntu 22.04  
    Follow the official guide:  
-   https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
+   https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html
 
 2. **Ignition Harmonic (Gazebo)**  
    See “ROS2 Integration” section here:  
@@ -191,7 +191,7 @@ link6_ws/
     ├── link6_bringup/
     ├── link6_control/
     ├── link6_description/
-    ├── ros2_kortex3.jazzy.repos
+    ├── ros2_kortex3.humble.repos
     ├── LICENSE
     └── README.md
 ```
@@ -218,19 +218,28 @@ sudo apt update
 sudo apt install \
   python3-rosdep \
   python3-colcon-clean \
-  ros-jazzy-gz-ros2-control \
-  ros-jazzy-gz-ros2-control-demos \
-  ros-jazzy-gripper-controllers
+  ros-${ROS_DISTRO}-gz-ros2-control \
+  ros-${ROS_DISTRO}-gz-ros2-control-demos \
+  ros-${ROS_DISTRO}-gripper-controllers
 
 ```
 
 #### 5.3.2 Package Dependencies
+
+**P.S.** If not previously done, make sure to initialize rosdep first, using:
+
+```bash
+sudo rosdep init
+```
+
+then 
 
 ```bash
 cd $COLCON_WS
 rosdep update
 rosdep install --ignore-src --from-paths src -r -y
 ```
+
 
 ### 5.4 Build & Source
 
@@ -397,15 +406,15 @@ Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 
 1. Fully open the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
 ```
 
 2. Fully close the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 1.0 (Fully Closed), for example:
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Closed) and 1.0 (Fully Open), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
@@ -424,7 +433,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.7, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.7 (Fully Closed), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
