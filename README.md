@@ -226,6 +226,14 @@ sudo apt install \
 
 #### 5.3.2 Package Dependencies
 
+**P.S.** If not previously done, make sure to initialize rosdep first, using:
+
+```bash
+sudo rosdep init
+```
+
+then 
+
 ```bash
 cd $COLCON_WS
 rosdep update
