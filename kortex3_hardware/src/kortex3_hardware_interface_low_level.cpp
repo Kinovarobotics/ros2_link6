@@ -388,17 +388,20 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::prepare_comman
   }
 
   // prepare flags for performing the switch
-  if (!stop_modes_.empty() &&
+  // Guard each stop flag with the currently running mode to avoid spurious stops when a controller
+  // releases interfaces that belong to a different mode (e.g. JTC releasing velocity interfaces
+  // while running in low-level position mode).
+  if (!stop_modes_.empty() && low_level_control_mode_running_ &&
       std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_POS) != stop_modes_.end())
   {
     stop_low_level_control_mode_ = true;
   }
-  if (!stop_modes_.empty() &&
+  if (!stop_modes_.empty() && joint_velocity_control_mode_running_ &&
       std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_VEL) != stop_modes_.end())
   {
     stop_joint_velocity_control_mode_ = true;
   }
-  if (!stop_modes_.empty() &&
+  if (!stop_modes_.empty() && twist_control_mode_running_ &&
       std::find(stop_modes_.begin(), stop_modes_.end(), StopStartInterface::STOP_TWIST) != stop_modes_.end())
   {
     stop_twist_control_mode_ = true;
@@ -454,6 +457,17 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
     const std::vector<std::string>& /*start_interfaces*/, const std::vector<std::string>& /*stop_interfaces*/)
 {
   hardware_interface::return_type ret_val = hardware_interface::return_type::OK;
+
+  // If low-level mode is being stopped and immediately restarted (e.g. switching from JTC to
+  // cartesian controller), skip the hardware transition entirely — just sync the command buffers.
+  if (stop_low_level_control_mode_ && start_low_level_control_mode_)
+  {
+    joint_positions_cmd_ = joint_positions_;
+    joint_velocities_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    feedback_ = base_cyclic_->RefreshFeedback();
+    stop_low_level_control_mode_ = false;
+    start_low_level_control_mode_ = false;
+  }
 
   if (stop_low_level_control_mode_)
   {
