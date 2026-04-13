@@ -241,7 +241,7 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder
     ```
 
-    When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [6.1 Quick Launch](#61-quick-launch)).
+    When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [2.1 Quick Launch](#21-quick-launch)).
 
     If you have multiple robots, you can use the `output_file` argument to save the files from each robot with a different name. For example:
 
