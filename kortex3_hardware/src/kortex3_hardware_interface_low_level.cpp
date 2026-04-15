@@ -747,8 +747,6 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 {
   try
   {
-    feedback_ = base_cyclic_->RefreshFeedback();
-
     for (size_t i = 0; i < feedback_.actuators_size() && i < actuator_count_; ++i)
     {
       const auto& act = feedback_.actuators(i);
@@ -781,6 +779,7 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
 {
   if (block_write_)
   {
+    feedback_ = base_cyclic_->RefreshFeedback();
     return hardware_interface::return_type::OK;
   }
 
@@ -802,6 +801,8 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
         // Keep alive mode - no controller active
         RCLCPP_DEBUG(LOGGER, "No controller active in SINGLE_LEVEL_SERVOING mode!");
       }
+      // Read after write in high-level mode
+      feedback_ = base_cyclic_->RefreshFeedback();
     }
     else if (arm_mode_ == k_api::Base::ServoingMode::LOW_LEVEL_SERVOING)
     {
@@ -814,16 +815,24 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
       else
       {
         // Keep alive mode - no controller active
+        feedback_ = base_cyclic_->RefreshFeedback();
         RCLCPP_DEBUG(LOGGER, "No controller active in LOW_LEVEL_SERVOING mode !");
       }
     }
     else
     {
       // Keep alive mode - no controller active
+      feedback_ = base_cyclic_->RefreshFeedback();
       RCLCPP_DEBUG(LOGGER,
                    "Fault was not recognized on the robot but combination of Control Mode and Active State "
                    "are not supported!");
     }
+  }
+  else
+  {
+    // this is needed when the robot was faulted
+    // so we can internally conclude it is not faulted anymore
+    feedback_ = base_cyclic_->RefreshFeedback();
   }
 
   // Forward gripper commands to the background thread via atomics.
