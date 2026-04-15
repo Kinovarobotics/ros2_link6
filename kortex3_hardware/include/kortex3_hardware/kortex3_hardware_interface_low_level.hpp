@@ -22,6 +22,7 @@
 
 #include "BaseClientRpc.h"
 #include "BaseCyclicClientRpc.h"
+#include "SafetyFunctionsClientRpc.h"
 
 #include "Base.pb.h"
 
@@ -117,6 +118,10 @@ private:
   k_api::Common::ModeSelection mode_selection_;
   k_api::Base::ServoingModeInformation servoing_mode_info_;
 
+  // Required to change the SafetyMode (Reduced vs. Normal)
+  std::shared_ptr<k_api::SafetyFunctions::SafetyFunctionsClient> safety_functions_client_;
+  k_api::SafetyFunctions::SafetySystem safety_system_;
+
   // twist temporary command
   k_api::Base::Twist * k_api_twist_;
   k_api::Base::TwistCommand k_api_twist_command_;
@@ -174,6 +179,7 @@ private:
   // --- Private Helper Methods ---
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
   void set_servoing_mode(const k_api::Base::ServoingMode& mode);
+  void set_safety_system_mode(const k_api::SafetyFunctions::SafetySystemMode& mode);
   void start_low_level_mode();
   void stop_low_level_mode();
 

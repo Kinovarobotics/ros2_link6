@@ -17,6 +17,7 @@ const rclcpp::Logger LOGGER = rclcpp::get_logger("Kortex3HardwareInterfaceLowLev
 Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   : mode_selection_(k_api::Common::ModeSelection())
   , servoing_mode_info_(k_api::Base::ServoingModeInformation())
+  , safety_system_(k_api::SafetyFunctions::SafetySystem())
   , actuator_count_(6)  // Default, updated from robot during activation.
   , k_api_twist_(nullptr)
   , stop_low_level_control_mode_(false)
@@ -543,6 +544,7 @@ Kortex3HardwareInterfaceLowLevel::on_activate(const rclcpp_lifecycle::State& /*p
     router_mqtt_->SpinProcess(std::chrono::milliseconds{ 1 });
     session_mqtt_ = std::make_shared<k_api::Session::SessionClient>(router_mqtt_.get());
     base_mqtt_ = std::make_shared<k_api::Base::BaseClient>(router_mqtt_.get());
+    safety_functions_client_ = std::make_shared<k_api::SafetyFunctions::SafetyFunctionsClient>(router_mqtt_.get());
 
     // UDP: high-frequency feedback and low-level commands
     transport_udp_ = std::make_unique<k_api::TransportClientUdp>();
@@ -919,16 +921,50 @@ void Kortex3HardwareInterfaceLowLevel::set_servoing_mode(const k_api::Base::Serv
   }
 }
 
+void Kortex3HardwareInterfaceLowLevel::set_safety_system_mode(const k_api::SafetyFunctions::SafetySystemMode& mode)
+{
+  // The possible safety system modes are:
+
+  // SAFETY_SYSTEM_MODE_UNSPECIFIED (0):    Unspecified safety system mode
+  // SAFETY_SYSTEM_MODE_NORMAL (1):         Normal safety system mode (faster joint limits)
+  // SAFETY_SYSTEM_MODE_REDUCED (2):        Reduced safety system mode (slower joint limits)
+
+  try
+  {
+    safety_system_.set_mode(mode);
+    safety_functions_client_->SetSafetySystemMode(safety_system_);
+    RCLCPP_INFO(LOGGER, "Setting safety system mode to %s.", k_api::SafetyFunctions::SafetySystemMode_Name(mode).c_str());
+  }
+  catch (const k_api::KDetailedException& ex)
+  {
+    RCLCPP_ERROR(LOGGER, "Failed to set safety system mode: %s", ex.what());
+  }
+  catch (std::runtime_error& ex_runtime)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Runtime error: " << ex_runtime.what());
+  }
+  catch (std::future_error& ex_future)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Future error: " << ex_future.what());
+  }
+  catch (std::exception& ex_std)
+  {
+    RCLCPP_ERROR_STREAM(LOGGER, "Standard exception: " << ex_std.what());
+  }
+}
+
 void Kortex3HardwareInterfaceLowLevel::start_low_level_mode()
 {
   change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  change_operating_mode(k_api::Common::OPERATING_MODE_AUTO);
+  change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
+  set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_NORMAL);
   set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
 }
 
 void Kortex3HardwareInterfaceLowLevel::stop_low_level_mode()
 {
+  set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_REDUCED);
   set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
   std::this_thread::sleep_for(std::chrono::milliseconds(3500));
   change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);

@@ -142,6 +142,7 @@ target_include_directories(kortex3_hardware_interface_low_level PUBLIC
   "${KORTEX_SDK_DIR}/include/messages"
   "${KORTEX_SDK_DIR}/include/client"
   "${KORTEX_SDK_DIR}/include/client_stubs"
+  "${KORTEX_SDK_DIR}/include/client_stubs/SafetyFunctions"
   "${KORTEX_SDK_DIR}/include/common"
   "${KORTEX_SDK_DIR}/include/google"
   "${KORTEX_SDK_DIR}/include/util"
