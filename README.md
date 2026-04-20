@@ -8,6 +8,16 @@
 
 ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robot. It is built upon the Kinova® Kortex3™ API, documentation for which can be found in the [GitHub Kortex3 repository](https://github.com/Kinovarobotics/Kinova-Kortex3-Link6).
 
+This repository includes two ROS2 drivers:
+
+- For teleoperation and high-level features such as configuring the robot parameters and safety features, use the default [High-level driver]().
+- For high-speed autonomous operation, use the [Low-level driver]().
+
+> [!CAUTION]
+> The Link6 is a powerful robot that can perform heavy duty industrial tasks. Read and understand all safety considerations before installing and using the robot. Refer to the [Link6 User Guide](https://artifactory.kinovaapps.com/ui/api/v1/download?repoKey=generic-documentation-public&path=Documentation%252FLink%25206%252FTechnical%2520documentation%252FUser%2520Guide%252FEN-UG-020-Link-6-user-guide-r4.2.pdf) for more information.
+
+This package is under active development. Users are encouraged to report any bugs via the GitHub Issues page.
+
 ## Table of Contents
 
 - [ROS2 Kortex 3](#ros2-kortex-3)
@@ -18,8 +28,9 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     - [1.3 Setting up the robot](#13-setting-up-the-robot)
   - [2. Usage](#2-usage)
     - [2.1 Quick Launch](#21-quick-launch)
-      - [2.1.1 Real Hardware](#211-real-hardware)
-      - [2.1.2 Simulation](#212-simulation)
+      - [2.1.1 Simulation](#211-simulation)
+      - [2.1.2 Real Hardware](#212-real-hardware)
+      - [2.1.3 Low-level Driver](#213-low-level-driver)
     - [2.2 Controllers \& Commands](#22-controllers--commands)
       - [2.2.1 Listing \& Switching Controllers](#221-listing--switching-controllers)
       - [2.2.2 Joint Trajectory Controller](#222-joint-trajectory-controller)
@@ -28,12 +39,9 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
       - [2.2.5 Robotiq Gripper Controller](#225-robotiq-gripper-controller)
       - [Real-life Control:](#real-life-control)
       - [Simulation Control:](#simulation-control)
-    - [2.3 Testing Tools](#23-testing-tools)
-      - [2.3.1 Read‑Only Test](#231-readonly-test)
-    - [2.4 MoveIt](#24-moveit)
+    - [2.4 MoveIt Integration](#24-moveit-integration)
       - [2.4.1 Real Hardware](#241-real-hardware)
       - [2.4.2 Simulation](#242-simulation)
-  - [3. Low-level Driver](#3-low-level-driver)
   - [4. Services \& Fault Handling](#4-services--fault-handling)
     - [4.1 Operating Modes](#41-operating-modes)
     - [4.2 Switching Modes](#42-switching-modes)
@@ -76,10 +84,11 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     See the guide here:  
     https://gazebosim.org/docs/fortress/ros_installation/
 
-3. Install `wget`:
+3. **System dependencies**
     ```bash
     sudo apt update
-    sudo apt install wget -y
+    sudo apt install wget git-lfs python3-colcon-common-extensions python3-vcstool python3-rosdep -y
+    git lfs install
     ```
 
 4. **Protobuf v3.20.3**  
@@ -114,23 +123,7 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
 
 ### 1.2 Installation
 
-1. Install some dependencies
-
-    Install git-lfs to retrieve the kortex 3 library from the pointer:
-
-    ```bash
-    sudo apt update
-    sudo apt install git-lfs
-    git lfs install
-    ```
-
-    Also make sure that `colcon`, `vcs`, and `rosdep` are installed:
-
-    ```bash
-    sudo apt install python3-colcon-common-extensions python3-vcstool python3-rosdep
-    ```
-
-2. Create a new ROS2 workspace:
+1. Create a new ROS2 workspace:
 
     ```bash
     export COLCON_WS=~/workspace/link6_ws
@@ -138,20 +131,20 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     cd $COLCON_WS/src
     ```
 
-3. Clone this repository:
+2. Clone this repository:
 
     ```bash
     git clone https://github.com/Kinovarobotics/ros2_kortex3.git
     ```
 
-4. Retrieve the kortex 3 library:
+3. Retrieve the kortex 3 library:
 
     ```bash
     cd ros2_kortex3
     git lfs pull
     ```
 
-5. Rearrange the directories:
+4. Rearrange the directories:
 
     ```bash
     cd $COLCON_WS
@@ -173,13 +166,13 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
         └── README.md
     ```
 
-6. Clone additional repositories:
+5. Clone additional repositories:
     ```bash
     cd $COLCON_WS
     vcs import src --skip-existing --input src/ros2_kortex3.$ROS_DISTRO.repos
     ```
 
-7. Install Dependencies
+6. Install Dependencies
 
     ```bash
     cd $COLCON_WS
@@ -187,7 +180,7 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     rosdep install --ignore-src --from-paths src -r -y
     ```
 
-8. Build & Source
+7. Build & Source
 
     ```bash
     colcon build --packages-skip cartesian_controller_simulation cartesian_controller_tests --cmake-args -DCMAKE_BUILD_TYPE=Release
@@ -241,7 +234,7 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
     ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder
     ```
 
-    When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [2.1 Quick Launch](#21-quick-launch)).
+    When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [Section 2. Usage](#2-usage)).
 
     If you have multiple robots, you can use the `output_file` argument to save the files from each robot with a different name. For example:
 
@@ -255,44 +248,76 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
 
 ### 2.1 Quick Launch
 
-#### 2.1.1 Real Hardware
+#### 2.1.1 Simulation
 
-First, deactivate the robotiq_plugin on the link6 controller using the webapp/teach pendant if you plan on controlling the mounted robotiq gripper using ROS2
+<p align="center">
+  <img src="doc/resources/link6_gazebo.png" alt="Link6 Gazebo" width="60%"/>
+</p>
 
-To bringup a real life Link6 with a mounted robotiq gripper, use the following:
-
-```bash
-ros2 launch link6_bringup link6.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
-```
-
-To bringup the arm without any mounted gripper, use the following:
-```bash
-ros2 launch link6_bringup link6.launch.py calibration_file:=/path/to/your_robot_calibration.yaml
-```
-
-**Note:** If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
-
-#### 2.1.2 Simulation
-
-**Simulation (Ignition/Gazebo Fortress)**
-
-To bringup a simulated Link6 with a mounted robotiq gripper, use the following:
+To bringup a simulated Link6, use the following:
 
 ```bash
 export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
 ros2 launch link6_bringup link6_sim.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
-To bringup the simulated arm without any mounted gripper, use the following:
+
+The accepted arguments are:
+
+* `gripper` : Gripper to use. Possible values are either `robotiq_2f_85` or `robotiq_2f_140`. Default value is an empty string, which will display the arm without a gripper.
+
+* `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
+
+#### 2.1.2 Real Hardware
+
+To bringup a real life Link6, use the following:
+
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
-ros2 launch link6_bringup link6_sim.launch.py calibration_file:=/path/to/calibration/folder/calibration.yaml
+ros2 launch link6_bringup link6.launch.py
 ```
 
-**Note:** If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
+The accepted arguments are:
 
-<p align="center">
-  <img src="doc/resources/link6_gazebo.png" alt="Link6 Gazebo" width="60%"/>
-</p>
+* `gripper` : Gripper to use. Possible values for the Gen3 are either `robotiq_2f_85`, `robotiq_2f_140` or `""`. Default is `""`. An empty string will not initialise any gripper.
+
+* `gripper_joint_name` : Name of the controlled joint of the gripper attached to the arm. Default value is `robotiq_85_left_knuckle_joint`.
+
+* `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
+
+* `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
+
+* `robot_ip` : IP address by which the robot can be reached. Default value is `192.168.1.10`. If you have reassigned your physical arm's robot IP address, you will need to assign that ip address.
+
+* `username` : Username to start a session to interact with the robot. Default value is `admin`.
+
+* `password` : Password to start a session to interact with the robot. Default value is `admin`.
+
+#### 2.1.3 Low-level Driver
+
+The default ROS2 driver uses a low-frequency MQTT connection to send commands to the arm. For applications that require fast, reactive control, achieving a higher frequency is essential. For such cases, we provide an alternative low-level driver that uses UDP to send joint position commands at up to 1kHz. To use it, make sure your Link6 controller firmware is up to date.
+
+To launch the real robot in low-level mode, use the following command:
+
+```bash
+ros2 launch link6_bringup link6_low_level.launch.py
+```
+
+This launch file accept the same parameters as the default one:
+
+* `gripper` : Gripper to use. Possible values for the Gen3 are either `robotiq_2f_85`, `robotiq_2f_140` or `""`. Default is `""`. An empty string will not initialise any gripper.
+
+* `gripper_joint_name` : Name of the controlled joint of the gripper attached to the arm. Default value is `robotiq_85_left_knuckle_joint`.
+
+* `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
+
+* `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
+
+* `robot_ip` : IP address by which the robot can be reached. Default value is `192.168.1.10`. If you have reassigned your physical arm's robot IP address, you will need to assign that ip address.
+
+* `username` : Username to start a session to interact with the robot. Default value is `admin`.
+
+* `password` : Password to start a session to interact with the robot. Default value is `admin`.
+
+**Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
 ### 2.2 Controllers & Commands
 
@@ -369,13 +394,11 @@ Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 **NOTE:** Make sure that whenever you send joint velocities, you send a zero velocity command afterward; otherwise the robot will keep moving based on the last velocity sent.
 
 #### 2.2.5 Robotiq Gripper Controller
-> **Use‑case:** control of the opening/closing of a mounted robotiq gripper
+> **Use‑case:** control of the opening/closing of a mounted Robotiq gripper
 
 > **Type:** `position_controllers/GripperActionController`
 
 #### Real-life Control:
-
-0. Before commanding the gripper, please make sure to use the webapp to install the robotiq_plugin, add the gripper to the list of active tools and activate the gripper using a custom program each time the robot is turned on.
 
 1. Fully open the gripper:
 ```bash
@@ -411,41 +434,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
 
-### 2.3 Testing Tools
-
-#### 2.3.1 Read‑Only Test
-
-**Run the test:**
-
-```bash
-ros2 run kortex3_hardware test_read_only
-```
-
-**Output:**
-
-```
-Press Ctrl+C to stop...
-=== Kortex3 Read Only Test ===
-Time: 6.4s
-
-Joint States:
---------------------------------------------------------------
-Joint | Position [deg] | Velocity [deg/s] | Torque [Nm]
-------|----------------|------------------|-------------
-  1   |          21.08 |            0.000 |       2.414
-  2   |          51.44 |            0.000 |     -16.377
-  3   |         115.39 |            0.000 |     -19.640
-  4   |           6.16 |            0.000 |      -3.285
-  5   |         -16.76 |            0.000 |       4.426
-  6   |           2.83 |            0.000 |       1.670
-
-End-Effector Wrench (tool_frame):
---------------------------------------------------------------
-Force (N)   : X=   1.877 Y=  -0.572 Z=  -3.509
-Torque (Nm) : X=   0.018 Y=   0.028 Z=  -0.025
-```
-
-### 2.4 MoveIt
+### 2.4 MoveIt Integration
 
 #### 2.4.1 Real Hardware
 
@@ -458,6 +447,7 @@ ros2 launch link6_bringup link6.launch.py gripper:=robotiq_2f_85 calibration_fil
 Then activate the joint_trajectory_controller (refer to section 6.2.1)
 
 Then start MoveIt:
+
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
 ```
@@ -478,26 +468,6 @@ Then start MoveIt:
 ```bash
 ros2 launch link6_moveit_config move_group.launch.py use_sim_time:=true use_rviz:=true
 ```
-
----
-
-## 3. Low-level Driver
-
-The default ROS2 driver uses a low-frequency MQTT connection to send commands to the arm. For applications that require fast, reactive control, achieving a higher frequency is essential. For such cases, we provide an alternative low-level driver that uses UDP to send joint position commands at up to 1kHz. To use it, make sure your Link6 controller firmware is up to date.
-
-To launch the robot in low-level mode, use the following command:
-
-```bash
-ros2 launch link6_bringup link6_low_level.launch.py
-```
-
-This launch file accept the same parameters as the default one. For example, you can use the `gripper` parameter to launch the robot with a gripper:
-
-```bash
-ros2 launch link6_bringup link6_low_level.launch.py gripper:=robotiq_2f_85
-```
-
-**Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
 ---
 
