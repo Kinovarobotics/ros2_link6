@@ -10,8 +10,8 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
 
 This repository includes two ROS2 drivers:
 
-- For teleoperation and high-level features such as configuring the robot parameters and safety features, use the default [High-level driver]().
-- For high-speed autonomous operation, use the [Low-level driver]().
+- For teleoperation and high-level features such as configuring the robot and safety features, use the default [High-level driver](#212-real-hardware).
+- For high-speed autonomous operation, use the [Low-level driver](#213-low-level-driver).
 
 > [!CAUTION]
 > The Link6 is a powerful robot that can perform heavy duty industrial tasks. Read and understand all safety considerations before installing and using the robot. Refer to the [Link6 User Guide](https://artifactory.kinovaapps.com/ui/api/v1/download?repoKey=generic-documentation-public&path=Documentation%252FLink%25206%252FTechnical%2520documentation%252FUser%2520Guide%252FEN-UG-020-Link-6-user-guide-r4.2.pdf) for more information.
@@ -54,13 +54,13 @@ This package is under active development. Users are encouraged to report any bug
       - [4.5.1 Listing the Available Programs](#451-listing-the-available-programs)
       - [4.5.2 Running a Specific Program](#452-running-a-specific-program)
       - [4.5.3 Stopping a Running Program](#453-stopping-a-running-program)
-      - [7.5.4 Checking Program Status](#754-checking-program-status)
+      - [4.5.4 Checking Program Status](#454-checking-program-status)
       - [4.5.5 Complete Workflow Example](#455-complete-workflow-example)
       - [4.6 Protection Zones Information](#46-protection-zones-information)
   - [5. Visualization](#5-visualization)
     - [5.1 RViz Setup](#51-rviz-setup)
     - [5.2 Interactive Marker Control](#52-interactive-marker-control)
-    - [8.3 Force/Torque Zeroing](#83-forcetorque-zeroing)
+    - [5.3 Force/Torque Zeroing](#53-forcetorque-zeroing)
   - [6. Package Overview](#6-package-overview)
     - [kortex3\_hardware](#kortex3_hardware)
     - [link6\_description](#link6_description)
@@ -224,7 +224,7 @@ This package is under active development. Users are encouraged to report any bug
       <img src="doc/resources/link6_portal.png" alt="Link6 Web Dashboard" width="60%"/>
     </p>
 
-5. Extract calibration data
+5. **Extract calibration data**
 
     Each Kinova Link6 is calibrated in the factory. This data can be extracted from the robot and used to apply robot-specific geometric corrections to the URDF files, improving positional accuracy. Although this step is not mandatory, it is highly recommended to avoid end-effector position errors.
 
@@ -657,7 +657,7 @@ message: "Program stopped successfully and operating mode set to AUTO."
 - The robot will decelerate safely according to its motion parameters
 - After stopping, ROS2 velocity controllers can be activated and used again
 
-#### 7.5.4 Checking Program Status
+#### 4.5.4 Checking Program Status
 
 To query the current status of the program runner:
 
@@ -783,7 +783,7 @@ If the interactive marker is not on the side menu of rviz, then you can add it b
   <img src="doc/resources/add_interactive.png" alt="Rviz Add by topic tab" width="30%"/>
 </p>
 
-### 8.3 Force/Torque Zeroing
+### 5.3 Force/Torque Zeroing
 
 The wrench visual might have non-calibrated force/torque readings and will show something like this:
 
