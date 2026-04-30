@@ -8,7 +8,7 @@
     isaac_joint_commands:=/isaac_joint_commands
     isaac_joint_states:=/isaac_joint_states
     use_fake_hardware:=false
-    fake_sensor_commands:=false
+    mock_sensor_commands:=false
     use_internal_bus_gripper_comm:=false
     com_port:=/dev/ttyUSB0">
     <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro" />
@@ -28,7 +28,7 @@
         isaac_joint_commands="${isaac_joint_commands}"
         isaac_joint_states="${isaac_joint_states}"
         use_fake_hardware="${use_fake_hardware}"
-        mock_sensor_commands="${fake_sensor_commands}"
+        mock_sensor_commands="${mock_sensor_commands}"
         include_ros2_control="${sim_gazebo}"
         com_port="${com_port}">
         <origin xyz="0 0 0" rpy="0 0 0" />

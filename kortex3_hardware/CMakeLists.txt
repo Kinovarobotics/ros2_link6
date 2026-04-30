@@ -54,6 +54,18 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 set(KORTEX_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/kortex3")
 add_compile_definitions(_OS_UNIX)
 
+# Detect system architecture and select appropriate library
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
+    message(STATUS "Detected x86_64 architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp.a")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp_ARM.a")
+    message(STATUS "Detected ARM architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp_ARM.a") 
+else()
+    message(WARNING "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}, defaulting to libKortexApiCpp.a")
+    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
+endif()
+
 # --- Hardware Interface Library ---
 add_library(kortex3_hardware_interface SHARED
   src/kortex3_hardware_interface.cpp
@@ -130,9 +142,9 @@ target_include_directories(kortex3_hardware_interface PUBLIC
 )
 
 target_link_libraries(kortex3_hardware_interface PUBLIC
-  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
-  nlohmann_json::nlohmann_json
-  pthread
+        "${KORTEX_API_LIB}"
+        nlohmann_json::nlohmann_json
+        pthread
 )
 
 target_include_directories(kortex3_hardware_interface_low_level PUBLIC
@@ -230,8 +242,8 @@ target_include_directories(get_calibration_node PUBLIC
 )
 
 target_link_libraries(get_calibration_node PUBLIC
-  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
-  pthread
+        "${KORTEX_API_LIB}"
+        pthread
 )
 
 ament_target_dependencies(get_calibration_node PUBLIC

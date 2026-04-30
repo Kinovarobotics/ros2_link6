@@ -19,7 +19,7 @@
     gripper_modbus_id:=9
     gripper_b_modbus_id:=10
     use_fake_hardware:=false
-    fake_sensor_commands:=false
+    mock_sensor_commands:=false
     sim_gazebo:=false
     low_level_mode:=false
     initial_positions_file:='$(find link6_description)/config/initial_positions.yaml'
@@ -78,7 +78,7 @@
       gripper_modbus_id="${gripper_modbus_id}"
       gripper_b_modbus_id="${gripper_b_modbus_id}"
       use_fake_hardware="${use_fake_hardware}"
-      fake_sensor_commands="${fake_sensor_commands}"
+      mock_sensor_commands="${mock_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
       low_level_mode="${low_level_mode}"
       initial_positions="${initial_positions}" />

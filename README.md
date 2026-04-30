@@ -405,15 +405,15 @@ Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 
 1. Fully open the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
 ```
 
 2. Fully close the gripper:
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 1.0 (Fully Closed), for example:
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Closed) and 1.0 (Fully Open), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
@@ -432,7 +432,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.7, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.81 (Fully Closed), for example:
+3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Open) and 0.7 (Fully Closed), for example:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
 ```
@@ -457,12 +457,12 @@ ros2 launch link6_moveit_config move_group.launch.py use_rviz:=true
 
 #### 2.4.2 Simulation
 
-**Simulation (Ignition/Gazebo Fortress)**
+**Simulation (Ignition/Gazebo Harmonic)**
 
 To use MoveIt with a simulated Link6, first bringup the robot:
 
 ```bash
-ros2 launch link6_bringup link6_sim.launch.py gripper:=robotiq_2f_85
+ros2 launch link6_bringup sim_robot.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/your_robot_calibration.yaml
 ```
 
 Then activate the joint_trajectory_controller (refer to section 6.2.1)
@@ -589,7 +589,7 @@ success: true
 message: "Found 3 program(s)."
 programs:
   - identifier: 1
-    name: "PickAndPlace"
+    name: "<program_name>"
   - identifier: 2
     name: "HomePosition"
   - identifier: 3
@@ -704,9 +704,9 @@ ros2 service call /controller_manager/switch_controller controller_manager_msgs/
 }"
 
 
-# 3. Run the desired program (e.g., 'PickAndPlace')
+# 3. Run the desired program (e.g., '<program_name>')
 ros2 service call /kortex3_hardware/run_program \
-  kortex3_hardware/srv/RunProgram "{program_name: 'PickAndPlace'}"
+  kortex3_hardware/srv/RunProgram "{program_name: '<program_name>'}"
 
 # 4. Monitor the program status
 ros2 service call /kortex3_hardware/get_program_status \
