@@ -14,6 +14,11 @@ from launch.substitutions import (
 )
 from launch_ros.substitutions import FindPackageShare
 
+_GRIPPER_JOINT_NAMES = {
+    "robotiq_2f_85": "robotiq_85_left_knuckle_joint",
+    "robotiq_2f_140": "finger_joint",
+}
+
 def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
@@ -23,6 +28,12 @@ def launch_setup(context, *args, **kwargs):
     robot_ip = LaunchConfiguration("robot_ip")
     username = LaunchConfiguration("username")
     password = LaunchConfiguration("password")
+
+    gripper_str = gripper.perform(context)
+    gripper_joint_name_str = gripper_joint_name.perform(context)
+    if not gripper_joint_name_str:
+        gripper_joint_name_str = _GRIPPER_JOINT_NAMES.get(gripper_str, "")
+
     robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -32,10 +43,10 @@ def launch_setup(context, *args, **kwargs):
             ),
             " ",
             "gripper:=",
-            gripper,
+            gripper_str,
             " ",
             "gripper_joint_name:=",
-            gripper_joint_name,
+            gripper_joint_name_str,
             " ",
             "use_internal_bus_gripper_comm:=",
             use_internal_bus_gripper_comm,
@@ -170,9 +181,12 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-            "gripper_joint_name",      
-            default_value="robotiq_85_left_knuckle_joint",
-            description='Name of the actuated joint in the gripper to be used by the controller'
+            "gripper_joint_name",
+            default_value="",
+            description=(
+                "Name of the actuated joint in the gripper to be used by the controller. "
+                "Defaults to the standard joint name for the selected gripper if left empty."
+            ),
         )
     )
     declared_arguments.append(
