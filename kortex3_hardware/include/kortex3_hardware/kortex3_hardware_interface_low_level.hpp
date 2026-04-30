@@ -180,8 +180,6 @@ private:
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
   void set_servoing_mode(const k_api::Base::ServoingMode& mode);
   void set_safety_system_mode(const k_api::SafetyFunctions::SafetySystemMode& mode);
-  void start_low_level_mode();
-  void stop_low_level_mode();
 
   void sendJointPositionCommands();
   void sendJointSpeedsCommand();

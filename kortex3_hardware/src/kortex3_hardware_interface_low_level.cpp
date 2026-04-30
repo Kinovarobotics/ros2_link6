@@ -136,6 +136,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   {
     RCLCPP_INFO(LOGGER, "Connection inactivity timeout is '%d'", connection_inactivity_timeout_);
   }
+  
   // Load gripper parameters (all optional)
   if (info_.hardware_parameters.count("use_internal_bus_gripper_comm"))
   {
@@ -472,7 +473,8 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
 
   if (stop_low_level_control_mode_)
   {
-    stop_low_level_mode();
+    set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
     low_level_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
   }
@@ -491,7 +493,9 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
 
   if (start_low_level_control_mode_)
   {
-    start_low_level_mode();
+    change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
+    set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_NORMAL);
+    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
     joint_velocity_control_mode_running_ = false;
     twist_control_mode_running_ = false;
     joint_positions_cmd_ = joint_positions_;
@@ -684,14 +688,8 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
   if (!gripper_b_.joint_name_.empty()) gripper_b_.shutdown(gripper_mtx_);
 
   // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
-  if (low_level_control_mode_running_)
-  {
-    stop_low_level_mode();
-  }
-  else
-  {
-    change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
-  }
+  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
 
   // Close API sessions
   if (session_udp_)
@@ -951,23 +949,6 @@ void Kortex3HardwareInterfaceLowLevel::set_safety_system_mode(const k_api::Safet
   {
     RCLCPP_ERROR_STREAM(LOGGER, "Standard exception: " << ex_std.what());
   }
-}
-
-void Kortex3HardwareInterfaceLowLevel::start_low_level_mode()
-{
-  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
-  set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_NORMAL);
-  set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
-}
-
-void Kortex3HardwareInterfaceLowLevel::stop_low_level_mode()
-{
-  set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_REDUCED);
-  set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
-  std::this_thread::sleep_for(std::chrono::milliseconds(3500));
-  change_operating_mode(k_api::Common::OPERATING_MODE_MONITORED_STOP);
 }
 
 void Kortex3HardwareInterfaceLowLevel::sendJointSpeedsCommand()
