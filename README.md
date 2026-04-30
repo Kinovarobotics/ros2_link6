@@ -10,11 +10,14 @@ ROS2 Kortex3 is the official ROS2 package to interact with the Kinova Link6 robo
 
 This repository includes two ROS2 drivers:
 
-- For teleoperation and high-level features such as configuring the robot and safety features, use the default [High-level driver](#212-real-hardware).
+- For teleoperation and high-level features such as configuring the robot and running pre-made programs, use the default [High-level driver](#212-real-hardware).
 - For high-speed autonomous operation, use the [Low-level driver](#213-low-level-driver).
 
 > [!CAUTION]
 > The Link6 is a powerful robot that can perform heavy duty industrial tasks. Read and understand all safety considerations before installing and using the robot. Refer to the [Link6 User Guide](https://artifactory.kinovaapps.com/ui/api/v1/download?repoKey=generic-documentation-public&path=Documentation%252FLink%25206%252FTechnical%2520documentation%252FUser%2520Guide%252FEN-UG-020-Link-6-user-guide-r4.2.pdf) for more information.
+
+> [!IMPORTANT]
+> The Link6 ROS2 driver requires your robot to be updated to the Firmware version 3.4.0.
 
 This package is under active development. Users are encouraged to report any bugs via the GitHub Issues page.
 
