@@ -14,6 +14,11 @@ from launch.substitutions import (
 )
 from launch_ros.substitutions import FindPackageShare
 
+_GRIPPER_JOINT_NAMES = {
+    "robotiq_2f_85": "robotiq_85_left_knuckle_joint",
+    "robotiq_2f_140": "finger_joint",
+}
+
 def launch_setup(context, *args, **kwargs):
     # Declare launch arguments
     gripper = LaunchConfiguration("gripper")
@@ -23,6 +28,12 @@ def launch_setup(context, *args, **kwargs):
     robot_ip = LaunchConfiguration("robot_ip")
     username = LaunchConfiguration("username")
     password = LaunchConfiguration("password")
+
+    gripper_str = gripper.perform(context)
+    gripper_joint_name_str = gripper_joint_name.perform(context)
+    if not gripper_joint_name_str:
+        gripper_joint_name_str = _GRIPPER_JOINT_NAMES.get(gripper_str, "")
+
     robot_description = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
@@ -32,10 +43,10 @@ def launch_setup(context, *args, **kwargs):
             ),
             " ",
             "gripper:=",
-            gripper,
+            gripper_str,
             " ",
             "gripper_joint_name:=",
-            gripper_joint_name,
+            gripper_joint_name_str,
             " ",
             "use_internal_bus_gripper_comm:=",
             use_internal_bus_gripper_comm,
@@ -52,6 +63,8 @@ def launch_setup(context, *args, **kwargs):
             "password:=",
             password,
             " ",
+            "low_level_mode:=true",
+            " ",
         ]
     )
     robot_description = {'robot_description': robot_description}
@@ -59,7 +72,7 @@ def launch_setup(context, *args, **kwargs):
     controller_config = os.path.join(
         get_package_share_directory('link6_control'), 
         'config',
-        'kortex3_controllers.yaml'
+        'link6_controllers_low_level.yaml'
     )
 
     robot_state_publisher_node = Node(
@@ -69,18 +82,21 @@ def launch_setup(context, *args, **kwargs):
         parameters=[robot_description],
     )
 
-    tf = Node(
+    static_transform_publisher = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='world_to_base_link',
         output='screen',
-        arguments=['0','0','0','0','0','0','world','base_link'],
+        arguments=['--frame-id', 'world', '--child-frame-id', 'base_link'],
     )
 
     controller_manager = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[robot_description, controller_config],
+        parameters=[controller_config],
+        remappings=[
+            ("~/robot_description", "/robot_description"),
+        ],
         output="screen",
         arguments=[
             "--ros-args",
@@ -99,12 +115,11 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
-    joint_trajectory_controller = Node(
+    joint_trajectory_controller_spawner = Node(
         package    = "controller_manager",
         executable = "spawner",
         arguments  = [
             "joint_trajectory_controller",
-            "--inactive",
             "--param-file", controller_config,
             "--controller-manager", "/controller_manager"
         ],
@@ -121,48 +136,37 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    cartesian_motion_controller_spawner = Node(
-            package    = "controller_manager",
-            executable = "spawner",
-            arguments=["cartesian_motion_controller", "--activate", "--controller-manager-timeout", "300"],
-            output     = "screen",
-        )
-
-    motion_control_handle_spawner = Node(
+    twist_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["motion_control_handle",  "--inactive", "--controller-manager-timeout", "300"],
-    )
-
-    robot_hand_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["robotiq_gripper_controller", "--activate", "--controller-manager", "/controller_manager"]
-    )
-
-    topic_relay = Node(
-        package="topic_tools",
-        executable="relay",
         arguments=[
-            "/motion_control_handle/target_frame",
-            "/cartesian_motion_controller/target_frame",
+            "twist_controller",
+            "--inactive",
+            "--controller-manager", "/controller_manager"
         ],
-        output="screen",
+    )
+
+    robotiq_gripper_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "robotiq_gripper_controller", 
+            "--activate", 
+            "--controller-manager", "/controller_manager"
+        ]
     )
 
     nodes_to_start = [
         robot_state_publisher_node,
-        tf,
+        static_transform_publisher,
         controller_manager,
         joint_state_broadcaster_spawner,
-        cartesian_motion_controller_spawner,
-        motion_control_handle_spawner,
-        joint_trajectory_controller,
+        joint_trajectory_controller_spawner,
         joint_velocity_controller_spawner,
-        topic_relay,
+        twist_controller_spawner,
     ]
     if gripper.perform(context) != "":
-        nodes_to_start.append(robot_hand_controller_spawner)
+        nodes_to_start.append(robotiq_gripper_controller_spawner)
     return nodes_to_start
 
 def generate_launch_description():
@@ -177,9 +181,12 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
-            "gripper_joint_name",      
-            default_value="robotiq_85_left_knuckle_joint",
-            description='Name of the actuated joint in the gripper to be used by the controller'
+            "gripper_joint_name",
+            default_value="",
+            description=(
+                "Name of the actuated joint in the gripper to be used by the controller. "
+                "Defaults to the standard joint name for the selected gripper if left empty."
+            ),
         )
     )
     declared_arguments.append(
