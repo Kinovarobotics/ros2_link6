@@ -41,6 +41,7 @@ This package is under active development. Users are encouraged to report any bug
       - [2.2.4 Joint Velocity Controller](#224-joint-velocity-controller)
       - [2.2.5 Robotiq Gripper Controller](#225-robotiq-gripper-controller)
       - [Real-life Control:](#real-life-control)
+      - [2.2.6 Twist Controller](#226-twist-controller)
       - [Simulation Control:](#simulation-control)
     - [2.4 MoveIt Integration](#24-moveit-integration)
       - [2.4.1 Real Hardware](#241-real-hardware)
@@ -320,6 +321,9 @@ This launch file accept the same parameters as the default one:
 
 * `password` : Password to start a session to interact with the robot. Default value is `admin`.
 
+> [!IMPORTANT]
+> The low-level driver operates in **Hold-to-Run** mode. The arm will only execute motion commands while the **Enabling Device** (the 3-position enabling switch) is held in the intermediate (enabled) position. Releasing or fully pressing the enabling device will stop the arm immediately.
+
 **Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
 ### 2.2 Controllers & Commands
@@ -331,9 +335,10 @@ By default our `controller_manager` brings up:
 | **joint\_state\_broadcaster**     | `joint_state_broadcaster/JointStateBroadcaster`         | Publish all joint states         | `/joint_states` (sensor\_msgs/JointState)                 |
 | **joint\_trajectory\_controller**   | `joint_trajectory_controller/JointTrajectoryController`     | Joint trajectory commands | `/joint_trajectory_controller/joint_trajectory` (trajectory_msgs/msg/JointTrajectory) |
 | **joint\_velocity\_controller**   | `velocity_controllers/JointGroupVelocityController`     | Low‑level joint‑space velocities | `/joint_velocity_controller/commands` (std_msgs/msg/Float64MultiArray) |
-| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking          | `/cartesian_motion_controller/target_frame` (geometry_msgs/msg/PoseStamped)  |
+| **cartesian\_motion\_controller** | `cartesian_motion_controller/CartesianMotionController` | Cartesian pose tracking *(high-level driver only)*         | `/cartesian_motion_controller/target_frame` (geometry_msgs/msg/PoseStamped)  |
 | **robotiq\_gripper\_controller** | `position_controllers/GripperActionController` | Gripper opening/closing control          | `/robotiq_gripper_controller/gripper_cmd` (control_msgs/action/GripperCommand)  |
-| **motion\_control\_handle**       | `cartesian_controller_handles/MotionControlHandle`      | RViz interactive‑marker handle   | —                                                         |
+| **motion\_control\_handle**       | `cartesian_controller_handles/MotionControlHandle`      | RViz interactive‑marker handle *(high-level driver only)*  | —                                                         |
+| **twist\_controller**             | `picknik_twist_controller/PicknikTwistController`       | Cartesian-space velocity commands *(low-level driver only)* | `/twist_controller/commands` (geometry_msgs/msg/Twist)   |
 
 #### 2.2.1 Listing & Switching Controllers
 
@@ -370,7 +375,7 @@ ros2 control switch_controllers \
 
 #### 2.2.3 Cartesian Motion Controller
 
-> **Use‑case:** smooth end‑effector motion via RViz handle or programmatic targets.
+> **Use‑case:** smooth end‑effector motion via RViz handle or programmatic targets. Only available with the [High-level Driver](#212-real-hardware).
 > **Type:** `cartesian_motion_controller/CartesianMotionController`
 
 1. **Activate** it (see above).
@@ -419,6 +424,33 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 ```
 
 **NOTE** Some grippers include an extra rubber layer on the fingertips which will affect the closing position value
+
+#### 2.2.6 Twist Controller
+
+> **Use‑case:** reactive end-effector velocity control in Cartesian space. Only available with the [Low-level Driver](#213-low-level-driver).
+> **Type:** `picknik_twist_controller/PicknikTwistController`
+
+1. Activate (see above):
+
+   ```bash
+   ros2 control switch_controllers \
+     --activate twist_controller \
+     --deactivate joint_trajectory_controller
+   ```
+
+2. Publish a twist command (e.g., move at 2 cm/s along X):
+
+   ```bash
+   ros2 topic pub /twist_controller/commands geometry_msgs/msg/Twist "{
+     linear: {x: 0.02, y: 0.0, z: 0.0},
+     angular: {x: 0.0, y: 0.0, z: 0.0}
+   }" -r 10
+   ```
+
+**NOTE:** Always publish a zero-velocity twist to stop the arm after motion, as the controller keeps applying the last received command.
+
+> [!IMPORTANT]
+> This controller requires the arm to be in **Hold-to-Run** mode (see [Low-level Driver](#213-low-level-driver)). The arm will stop as soon as the Enabling Device is released.
 
 #### Simulation Control:
 
