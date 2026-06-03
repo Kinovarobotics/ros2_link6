@@ -28,6 +28,8 @@ def launch_setup(context, *args, **kwargs):
     robot_ip = LaunchConfiguration("robot_ip")
     username = LaunchConfiguration("username")
     password = LaunchConfiguration("password")
+    operating_mode = LaunchConfiguration("operating_mode")
+    safety_mode = LaunchConfiguration("safety_mode")
 
     gripper_str = gripper.perform(context)
     gripper_joint_name_str = gripper_joint_name.perform(context)
@@ -64,6 +66,12 @@ def launch_setup(context, *args, **kwargs):
             password,
             " ",
             "low_level_mode:=true",
+            " ",
+            "operating_mode:=",
+            operating_mode,
+            " ",
+            "safety_mode:=",
+            safety_mode,
             " ",
         ]
     )
@@ -224,6 +232,22 @@ def generate_launch_description():
             "password",
             default_value="admin",
             description="password to start a session to interact with the robot",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "operating_mode",
+            default_value="hold_to_run",
+            description="Operating mode used when the low-level position controller is active.",
+            choices=["hold_to_run", "auto"],
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "safety_mode",
+            default_value="reduced",
+            description="Safety system mode used when the low-level position controller is active.",
+            choices=["reduced", "normal"],
         )
     )
     return LaunchDescription(declared_arguments+[OpaqueFunction(function=launch_setup)])

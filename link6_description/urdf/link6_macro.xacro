@@ -22,6 +22,8 @@
     mock_sensor_commands:=false
     sim_gazebo:=false
     low_level_mode:=false
+    operating_mode:=hold_to_run
+    safety_mode:=reduced
     initial_positions_file:='$(find link6_description)/config/initial_positions.yaml'
     calibration_file:='$(find link6_description)/config/default_calibration.yaml'">
 
@@ -81,6 +83,8 @@
       mock_sensor_commands="${mock_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
       low_level_mode="${low_level_mode}"
+      operating_mode="${operating_mode}"
+      safety_mode="${safety_mode}"
       initial_positions="${initial_positions}" />
 
 

@@ -117,6 +117,8 @@ private:
   k_api::Base::ServoingMode arm_mode_;
   k_api::Common::ModeSelection mode_selection_;
   k_api::Base::ServoingModeInformation servoing_mode_info_;
+  k_api::Common::OperatingModeType low_level_operating_mode_;
+  k_api::SafetyFunctions::SafetySystemMode low_level_safety_mode_;
 
   // Required to change the SafetyMode (Reduced vs. Normal)
   std::shared_ptr<k_api::SafetyFunctions::SafetyFunctionsClient> safety_functions_client_;

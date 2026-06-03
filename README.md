@@ -320,6 +320,10 @@ This launch file accept the same parameters as the default one:
 
 * `password` : Password to start a session to interact with the robot. Default value is `admin`.
 
+* `operating_mode` : Operating mode applied to the robot when the low-level position controller is activated. Accepted values are `hold_to_run` (the operator must keep a button pressed for motion to proceed) and `auto` (motion runs without operator input). Default value is `hold_to_run`.
+
+* `safety_mode` : Safety system mode applied when the low-level position controller is activated. `reduced` enforces slower joint speed limits, while `normal` allows the full speed envelope. Default value is `reduced`.
+
 **Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
 ### 2.2 Controllers & Commands
