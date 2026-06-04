@@ -174,9 +174,7 @@
       <parent link="${prefix}base_link" />
       <child link="${prefix}shoulder_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
-        velocity="3.141592653589793" /> -->
-      <limit lower="-6.283185307179586" upper="0.0" effort="210"
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
         velocity="3.141592653589793" />
     </joint>
     <link name="${prefix}arm_link">
@@ -265,9 +263,7 @@
       <parent link="${prefix}shoulder_link" />
       <child link="${prefix}arm_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
-        velocity="3.141592653589793" /> -->
-      <limit lower="-0.5236" upper="1.3963" effort="210"
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
         velocity="3.141592653589793" />
     </joint>
     <link name="${prefix}forearm_link">
@@ -320,11 +316,8 @@
       <parent link="${prefix}arm_link" />
       <child link="${prefix}forearm_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
-        velocity="3.141592653589793" /> -->
-      <limit lower="-2.7925" upper="0.0" effort="210"
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
         velocity="3.141592653589793" />
-      <!-- <initial_position>1.57079632679</initial_position> -->
     </joint>
     <link name="${prefix}lower_wrist_link">
       <inertial>
@@ -382,10 +375,8 @@
       <parent link="${prefix}forearm_link" />
       <child link="${prefix}lower_wrist_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" /> -->
-      <limit lower="-3.5" upper="-2.5" effort="100"
-        velocity="6.283185307179586" />
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
+        velocity="5.5851" />
     </joint>
     <link name="${prefix}upper_wrist_link">
       <inertial>
@@ -438,10 +429,8 @@
       <parent link="${prefix}lower_wrist_link" />
       <child link="${prefix}upper_wrist_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" /> -->
-      <limit lower="-0.3" upper="1.8" effort="100"
-        velocity="6.283185307179586" />
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
+        velocity="5.5851" />
     </joint>
     <link name="${prefix}wrist_interface_link">
       <inertial>
@@ -475,10 +464,8 @@
       <parent link="${prefix}upper_wrist_link" />
       <child link="${prefix}wrist_interface_link" />
       <axis xyz="0 0 1" />
-      <!-- <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" /> -->
-      <limit lower="-1.9" upper="3.2" effort="100"
-        velocity="6.283185307179586" />
+      <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
+        velocity="5.5851" />
     </joint>
 
     <link name="${prefix}end_effector_link" />
