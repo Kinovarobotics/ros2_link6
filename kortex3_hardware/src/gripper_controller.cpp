@@ -89,7 +89,7 @@ std::optional<double> GripperController::readPosition(
   if (!ok) return std::nullopt;
 
   const uint8_t raw = gripper_->GetPosition();
-  position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);
+  position_ = static_cast<double>(raw) / 255.0;
   return position_;
 }
 
@@ -98,7 +98,7 @@ void GripperController::sendCommand(double position_metres, std::mutex & mutex)
   const auto now = std::chrono::steady_clock::now();
   if (now < next_send_) return;
 
-  const double clamped = std::clamp(position_metres, 0.0, 0.025);
+  const double clamped = std::clamp(position_metres, 0.0, 1.0);
   if (last_cmd_pos_ == last_cmd_pos_ &&  // not NaN
       std::abs(clamped - last_cmd_pos_) < 0.0001) {
     return;  // change too small to bother
@@ -107,7 +107,7 @@ void GripperController::sendCommand(double position_metres, std::mutex & mutex)
   std::lock_guard<std::mutex> lk(mutex);
   if (!initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((1.0 - (clamped / 0.025)) * 255.0);
+  const uint8_t pos = static_cast<uint8_t>(clamped * 255.0);
   const uint8_t spd = 255;
 
   gripper_->ClearGoToRequest();
