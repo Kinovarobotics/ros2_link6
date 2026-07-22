@@ -969,7 +969,19 @@ void Kortex3HardwareInterfaceLowLevel::set_safety_system_mode(const k_api::Safet
   }
   catch (const k_api::KDetailedException& ex)
   {
-    RCLCPP_ERROR(LOGGER, "Failed to set safety system mode: %s", ex.what());
+    const bool is_already_set =
+        ex.getErrorInfo().getError().error_sub_code() == k_api::SubErrorCodes::INVALID_PARAM &&
+        std::string(ex.what()).find("same as the current safety mode") != std::string::npos;
+
+    if (is_already_set)
+    {
+      RCLCPP_INFO(LOGGER, "Safety system mode already set to %s.",
+                   k_api::SafetyFunctions::SafetySystemMode_Name(mode).c_str());
+    }
+    else
+    {
+      RCLCPP_ERROR(LOGGER, "Failed to set safety system mode: %s", ex.what());
+    }
   }
   catch (std::runtime_error& ex_runtime)
   {
