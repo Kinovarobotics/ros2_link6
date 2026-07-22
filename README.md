@@ -326,7 +326,10 @@ This launch file accept the same parameters as the default one:
 * `safety_mode` : Safety system mode applied when the low-level position controller is activated. `reduced` enforces slower joint speed limits, while `normal` allows the full speed envelope. Default value is `reduced`.
   
 > [!IMPORTANT]
-> The low-level driver operates in **Hold-to-Run** mode. The arm will only execute motion commands while the **Enabling Device** (the 3-position enabling switch) is held in the intermediate (enabled) position. Releasing or fully pressing the enabling device will stop the arm immediately.
+> The low-level driver operates in **Hold-to-Run** mode by default. The arm will only execute motion commands while the **Enabling Device** (the 3-position enabling switch) is held in the intermediate (enabled) position. Releasing or fully pressing the enabling device will stop the arm immediately.
+
+> [!CAUTION]
+> In **Auto** mode the arm will move even if the **Enabling Device** is not pressed. Please exercise caution when using this mode. Please read and understand all safety considerations and exercise caution when using this mode (refer to the Link 6 User Guide for information).
 
 **Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
