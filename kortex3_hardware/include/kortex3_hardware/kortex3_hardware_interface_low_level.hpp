@@ -99,6 +99,17 @@ private:
 
   // Monotonically increasing frame counter for BaseCyclic commands.
   int base_command_frame_id_; 
+
+
+  // Internal state variables
+  k_api::Common::ArmState arm_state_;
+  k_api::Common::OperatingModeType operating_mode_;
+  std::atomic<bool> enabling_device_state_ = false;
+  std::atomic<bool> in_fault_ = false;
+  std::atomic<bool> block_write_ = false;
+
+  // Clock used to throttle log messages printed from the 1kHz read()/write() loop.
+  rclcpp::Clock clock_;
   
   
   // --- Kortex API Objects ---
@@ -146,11 +157,6 @@ private:
   bool low_level_control_mode_running_;
   bool joint_velocity_control_mode_running_;
   bool twist_control_mode_running_;
-
-
-  // Fault management
-  std::atomic<bool> in_fault_ = false;
-  std::atomic<bool> block_write_ = false;
 
   // --- Gripper ---
   bool use_internal_bus_gripper_comm_;

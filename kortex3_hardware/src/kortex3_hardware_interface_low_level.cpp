@@ -784,6 +784,25 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
 hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rclcpp::Time& /*time*/,
                                                               const rclcpp::Duration& /*period*/)
 {
+
+  // Read the arm state from the feedback
+  arm_state_ = feedback_.base().active_state();
+  operating_mode_ = feedback_.base().operating_mode();
+  enabling_device_state_ = feedback_.base().enabling_device_state();
+  // RCLCPP_INFO_THROTTLE(LOGGER, clock_, 1000, "Arm state: %s", k_api::Common::ArmState_Name(arm_state_).c_str());
+  // RCLCPP_INFO(LOGGER, "Operating mode: %s", k_api::Common::OperatingModeType_Name(operating_mode_).c_str());
+  // RCLCPP_INFO(LOGGER, "Enabling device: %d", enabling_device_state_.load(std::memory_order_relaxed));
+
+  if (operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN && !enabling_device_state_)
+  {
+    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000, 
+      "Hold-to-Run mode: Hold the three-position enabling device in its middle position to enable the controller.");
+  }
+
+  // Detect if the arm is in fault
+  in_fault_ = (arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT ||
+      arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT_POWERED_OFF);
+
   try
   {
     for (size_t i = 0; i < feedback_.actuators_size() && i < actuator_count_; ++i)
@@ -816,7 +835,8 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rclcpp::Time& /*time*/,
                                                                const rclcpp::Duration& /*period*/)
 {
-  if (block_write_)
+  if ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN && !enabling_device_state_) ||
+      block_write_)
   {
     feedback_ = base_cyclic_->RefreshFeedback();
     return hardware_interface::return_type::OK;
