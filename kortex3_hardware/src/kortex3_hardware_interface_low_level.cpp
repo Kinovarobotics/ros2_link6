@@ -30,6 +30,8 @@ Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   , joint_velocity_control_mode_running_(false)
   , twist_control_mode_running_(false)
   , base_command_frame_id_(0)
+  , low_level_operating_mode_(k_api::Common::OPERATING_MODE_HOLD_TO_RUN)
+  , low_level_safety_mode_(k_api::SafetyFunctions::SAFETY_SYSTEM_MODE_REDUCED)
   , use_internal_bus_gripper_comm_(false)
   , gripper_a_(9)
   , gripper_b_(10)
@@ -137,6 +139,38 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
     RCLCPP_INFO(LOGGER, "Connection inactivity timeout is '%d'", connection_inactivity_timeout_);
   }
   
+  // Operating mode for the low-level position controller (optional, default: hold_to_run)
+  if (info_.hardware_parameters.count("operating_mode"))
+  {
+    const auto & v = info_.hardware_parameters.at("operating_mode");
+    if (v == "auto")
+    {
+      low_level_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
+      RCLCPP_INFO(LOGGER, "Low-level operating mode: AUTO");
+    }
+    else
+    {
+      low_level_operating_mode_ = k_api::Common::OPERATING_MODE_HOLD_TO_RUN;
+      RCLCPP_INFO(LOGGER, "Low-level operating mode: HOLD_TO_RUN");
+    }
+  }
+
+  // Safety system mode for the low-level position controller (optional, default: reduced)
+  if (info_.hardware_parameters.count("safety_mode"))
+  {
+    const auto & v = info_.hardware_parameters.at("safety_mode");
+    if (v == "normal")
+    {
+      low_level_safety_mode_ = k_api::SafetyFunctions::SAFETY_SYSTEM_MODE_NORMAL;
+      RCLCPP_INFO(LOGGER, "Low-level safety mode: NORMAL");
+    }
+    else
+    {
+      low_level_safety_mode_ = k_api::SafetyFunctions::SAFETY_SYSTEM_MODE_REDUCED;
+      RCLCPP_INFO(LOGGER, "Low-level safety mode: REDUCED");
+    }
+  }
+
   // Load gripper parameters (all optional)
   if (info_.hardware_parameters.count("use_internal_bus_gripper_comm"))
   {
@@ -493,8 +527,8 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::perform_comman
 
   if (start_low_level_control_mode_)
   {
-    change_operating_mode(k_api::Common::OPERATING_MODE_HOLD_TO_RUN);
-    set_safety_system_mode(k_api::SafetyFunctions::SafetySystemMode::SAFETY_SYSTEM_MODE_NORMAL);
+    change_operating_mode(low_level_operating_mode_);
+    set_safety_system_mode(low_level_safety_mode_);
     set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
     joint_velocity_control_mode_running_ = false;
     twist_control_mode_running_ = false;
@@ -935,7 +969,19 @@ void Kortex3HardwareInterfaceLowLevel::set_safety_system_mode(const k_api::Safet
   }
   catch (const k_api::KDetailedException& ex)
   {
-    RCLCPP_ERROR(LOGGER, "Failed to set safety system mode: %s", ex.what());
+    const bool is_already_set =
+        ex.getErrorInfo().getError().error_sub_code() == k_api::SubErrorCodes::INVALID_PARAM &&
+        std::string(ex.what()).find("same as the current safety mode") != std::string::npos;
+
+    if (is_already_set)
+    {
+      RCLCPP_INFO(LOGGER, "Safety system mode already set to %s.",
+                   k_api::SafetyFunctions::SafetySystemMode_Name(mode).c_str());
+    }
+    else
+    {
+      RCLCPP_ERROR(LOGGER, "Failed to set safety system mode: %s", ex.what());
+    }
   }
   catch (std::runtime_error& ex_runtime)
   {
