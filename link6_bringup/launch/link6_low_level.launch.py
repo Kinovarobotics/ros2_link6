@@ -237,7 +237,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "operating_mode",
-            default_value="hold_to_run",
+            default_value="auto",
             description="Operating mode used when the low-level position controller is active.",
             choices=["hold_to_run", "auto"],
         )

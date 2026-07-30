@@ -21,7 +21,7 @@
     mock_sensor_commands:=false
     sim_gazebo:=false
     low_level_mode:=false
-    operating_mode:=hold_to_run
+    operating_mode:=auto
     safety_mode:=reduced
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}">
 
