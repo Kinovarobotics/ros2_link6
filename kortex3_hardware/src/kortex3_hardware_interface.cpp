@@ -125,13 +125,14 @@ std::optional<double> GripperController::readPosition(std::mutex& mutex, const r
     return std::nullopt;
   }
 
-  // Decode & cache
+  // Decode & cache. Robotiq position register: 0x00 = fully open, 0xFF = fully
+  // closed. Report normalized state in [0, 1]: 0.0 = fully closed, 1.0 = fully open.
   const uint8_t raw = gripper_->GetPosition();
-  position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);
+  position_ = 1.0 - (static_cast<double>(raw) / 255.0);
   return position_;
 }
 
-void GripperController::sendCommand(double position_radians, std::mutex& mutex)
+void GripperController::sendCommand(double normalized_position, std::mutex& mutex)
 {
   // Gate BEFORE locking to avoid needless contention
   const auto now = std::chrono::steady_clock::now();
@@ -139,10 +140,11 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   // Limit command rate
   if (now < next_send_) return;
 
-  // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 0.025);
+  // Command domain is normalized [0, 1]: 0.0 = fully closed, 1.0 = fully open.
+  // Clamp into range and skip tiny, redundant updates.
+  const double clamped = std::clamp(normalized_position, 0.0, 1.0);
   if (last_cmd_pos_ == last_cmd_pos_ &&   // not NaN
-      std::abs(clamped - last_cmd_pos_) < 0.0001)  // ~0.4% of stroke
+      std::abs(clamped - last_cmd_pos_) < 0.0001)  // ~0.01% of full range
   {
     return;
   }
@@ -151,7 +153,8 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   std::lock_guard<std::mutex> lk(mutex);
   if (!initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
+  // Robotiq position register: 0x00 = fully open, 0xFF = fully closed.
+  const uint8_t pos = static_cast<uint8_t>((1.0 - clamped) * 255.0);
   const uint8_t spd = 255;
 
   // Best-effort write sequence
@@ -430,7 +433,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           return hardware_interface::CallbackReturn::ERROR;
         }
         float gripper_a_initial_position = static_cast<float>(opt_gripper_a_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad.", gripper_a_initial_position);
+        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' (normalized, 0=closed 1=open).", gripper_a_initial_position);
 
         gripper_a_.command_position_ = gripper_a_initial_position;
         gripper_a_.sendCommand(gripper_a_initial_position, gripper_mtx_);
@@ -453,7 +456,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           return hardware_interface::CallbackReturn::ERROR;
         }
         float gripper_b_initial_position = static_cast<float>(opt_gripper_b_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad.", gripper_b_initial_position);
+        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' (normalized, 0=closed 1=open).", gripper_b_initial_position);
 
         gripper_b_.command_position_ = gripper_b_initial_position;
         gripper_b_.sendCommand(gripper_b_initial_position, gripper_mtx_);
