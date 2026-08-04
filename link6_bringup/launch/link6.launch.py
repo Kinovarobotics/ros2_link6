@@ -80,7 +80,7 @@ def launch_setup(context, *args, **kwargs):
     controller_manager = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[controller_config],
+        parameters=[robot_description, controller_config],
         remappings=[
             ("~/robot_description", "/robot_description"),
         ],
@@ -157,14 +157,14 @@ def launch_setup(context, *args, **kwargs):
         tf,
         controller_manager,
         joint_state_broadcaster_spawner,
-        # cartesian_motion_controller_spawner,
-        # motion_control_handle_spawner,
+        cartesian_motion_controller_spawner,
+        motion_control_handle_spawner,
         joint_trajectory_controller,
         joint_velocity_controller_spawner,
-        # topic_relay,
+        topic_relay,
     ]
-    # if gripper.perform(context) != "":
-    #     nodes_to_start.append(robot_hand_controller_spawner)
+    if gripper.perform(context) != "":
+        nodes_to_start.append(robot_hand_controller_spawner)
     return nodes_to_start
 
 def generate_launch_description():

@@ -56,6 +56,10 @@ public:
   // Configuration
   std::string joint_name_;
   uint16_t modbus_id_;
+  // Closed-angle limit (URDF <limit upper>): the joint radian value that maps to a fully
+  // closed gripper (raw Modbus 255). Command/state both use the radian domain [0, max_angle_]
+  // (0 = fully open, max_angle_ = fully closed). Default 0.8 (2f_85); use 0.7 for the 2f_140.
+  double max_angle_ = 0.8;
 
   // Modbus objects
   std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
@@ -87,16 +91,18 @@ public:
    *        Uses try_to_lock so it never blocks the caller.
    * @param mutex Shared Modbus bus mutex.
    * @param logger ROS logger.
-   * @return Position in metres, or nullopt on failure.
+   * @return Joint angle in radians [0, max_angle_] (0.0 = fully open,
+   *         max_angle_ = fully closed), matching the URDF joint, or nullopt on failure.
    */
   std::optional<double> readPosition(std::mutex & mutex, const rclcpp::Logger & logger);
 
   /**
    * @brief Send a position command to the gripper. Rate-limited to cmd_period_.
-   * @param position_metres Target position in metres [0, 0.025].
+   * @param position_radians Target joint angle in radians [0, max_angle_]
+   *        (0.0 = fully open, max_angle_ = fully closed).
    * @param mutex Shared Modbus bus mutex.
    */
-  void sendCommand(double position_metres, std::mutex & mutex);
+  void sendCommand(double position_radians, std::mutex & mutex);
 
   /**
    * @brief Gracefully close the Modbus connection and reset internal state.

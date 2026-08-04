@@ -191,6 +191,11 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
     if (info_.hardware_parameters.count("gripper_b_modbus_id"))
       gripper_b_.modbus_id_ = static_cast<uint16_t>(
         std::stoul(info_.hardware_parameters.at("gripper_b_modbus_id")));
+    // Closed-angle limit (URDF <limit upper>) is optional; defaults to 0.8 (2f_85). Use 0.7 for 2f_140.
+    if (info_.hardware_parameters.count("gripper_max_angle"))
+      gripper_a_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_max_angle"));
+    if (info_.hardware_parameters.count("gripper_b_max_angle"))
+      gripper_b_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_b_max_angle"));
     if (!gripper_a_.joint_name_.empty())
       RCLCPP_INFO(LOGGER, "Gripper A: joint='%s' modbus_id=%u",
                   gripper_a_.joint_name_.c_str(), gripper_a_.modbus_id_);
@@ -668,7 +673,7 @@ Kortex3HardwareInterfaceLowLevel::on_activate(const rclcpp_lifecycle::State& /*p
         gripper_a_cmd_ = init;
         gripper_a_pos_atomic_.store(init, std::memory_order_relaxed);
         gripper_a_cmd_atomic_.store(init, std::memory_order_relaxed);
-        RCLCPP_INFO(LOGGER, "Gripper A initial position: %.4f m", init);
+        RCLCPP_INFO(LOGGER, "Gripper A initial position: %.4f rad", init);
       }
       if (!gripper_b_.joint_name_.empty())
       {
@@ -683,7 +688,7 @@ Kortex3HardwareInterfaceLowLevel::on_activate(const rclcpp_lifecycle::State& /*p
         gripper_b_cmd_ = init;
         gripper_b_pos_atomic_.store(init, std::memory_order_relaxed);
         gripper_b_cmd_atomic_.store(init, std::memory_order_relaxed);
-        RCLCPP_INFO(LOGGER, "Gripper B initial position: %.4f m", init);
+        RCLCPP_INFO(LOGGER, "Gripper B initial position: %.4f rad", init);
       }
 
       // Launch the background thread that handles all Modbus I/O at ~20 Hz.

@@ -88,26 +88,30 @@ std::optional<double> GripperController::readPosition(
   next_poll_ = now + poll_period_;
   if (!ok) return std::nullopt;
 
+  // Report the joint angle in radians [0, max_angle_] to match the URDF joint
+  // (0.0 = fully open, max_angle_ = fully closed) so RViz/MoveIt state is correct.
   const uint8_t raw = gripper_->GetPosition();
-  position_ = static_cast<double>(raw) / 255.0;
+  position_ = (static_cast<double>(raw) / 255.0) * max_angle_;
   return position_;
 }
 
-void GripperController::sendCommand(double position_metres, std::mutex & mutex)
+void GripperController::sendCommand(double position_radians, std::mutex & mutex)
 {
   const auto now = std::chrono::steady_clock::now();
   if (now < next_send_) return;
 
-  const double clamped = std::clamp(position_metres, 0.0, 1.0);
+  // Command domain is joint radians [0, max_angle_]: 0.0 = fully open,
+  // max_angle_ = fully closed (matches the URDF joint and MoveIt SRDF).
+  const double clamped = std::clamp(position_radians, 0.0, max_angle_);
   if (last_cmd_pos_ == last_cmd_pos_ &&  // not NaN
-      std::abs(clamped - last_cmd_pos_) < 0.0001) {
+      std::abs(clamped - last_cmd_pos_) < 0.0001) {  // rad
     return;  // change too small to bother
   }
 
   std::lock_guard<std::mutex> lk(mutex);
   if (!initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>(clamped * 255.0);
+  const uint8_t pos = static_cast<uint8_t>((clamped / max_angle_) * 255.0);
   const uint8_t spd = 255;
 
   gripper_->ClearGoToRequest();
