@@ -23,7 +23,6 @@
     <xacro:arg name="use_internal_bus_gripper_comm" default="false" />
     <xacro:arg name="use_external_cable" default="false" />
     <xacro:arg name="low_level_mode" default="false" />
-    <xacro:arg name="operating_mode" default="auto" />
     <xacro:arg name="safety_mode" default="reduced" />
     <!-- Initial position for simulations (Mock Hardware, Gazebo) -->
     <xacro:arg name="initial_positions_file" default="$(find link6_description)/config/initial_positions.yaml" />
@@ -55,7 +54,6 @@
         mock_sensor_commands="$(arg mock_sensor_commands)"
         sim_gazebo="$(arg sim_gazebo)"
         low_level_mode="$(arg low_level_mode)"
-        operating_mode="$(arg operating_mode)"
         safety_mode="$(arg safety_mode)"
         initial_positions_file="$(arg initial_positions_file)"
         calibration_file="$(arg calibration_file)">
