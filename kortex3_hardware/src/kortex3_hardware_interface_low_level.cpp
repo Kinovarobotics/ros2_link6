@@ -789,14 +789,20 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
   arm_state_ = feedback_.base().active_state();
   operating_mode_ = feedback_.base().operating_mode();
   enabling_device_state_ = feedback_.base().enabling_device_state();
-  // RCLCPP_INFO_THROTTLE(LOGGER, clock_, 1000, "Arm state: %s", k_api::Common::ArmState_Name(arm_state_).c_str());
-  // RCLCPP_INFO(LOGGER, "Operating mode: %s", k_api::Common::OperatingModeType_Name(operating_mode_).c_str());
-  // RCLCPP_INFO(LOGGER, "Enabling device: %d", enabling_device_state_.load(std::memory_order_relaxed));
 
-  if (operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN && !enabling_device_state_)
+  if (operating_mode_ == k_api::Common::OPERATING_MODE_MONITORED_STOP)
   {
-    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000, 
-      "Hold-to-Run mode: Hold the three-position enabling device in its middle position to enable the controller.");
+    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000,
+                        "Robot is in Monitored Stop and will not move. Reactivate a controller to proceed.");
+  }
+
+  if ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN || 
+       operating_mode_ == k_api::Common::OPERATING_MODE_JOG_MANUAL) &&
+      !enabling_device_state_)
+  {
+    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000,
+                        "Robot will not move - the enabling device is not pressed. Hold the three-position enabling "
+                        "device in its middle position to enable the controller.");
   }
 
   // Detect if the arm is in fault
@@ -835,8 +841,10 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rclcpp::Time& /*time*/,
                                                                const rclcpp::Duration& /*period*/)
 {
-  if ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN && !enabling_device_state_) ||
-      block_write_)
+  if (operating_mode_ == k_api::Common::OPERATING_MODE_MONITORED_STOP ||
+      ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN || 
+       operating_mode_ == k_api::Common::OPERATING_MODE_JOG_MANUAL) &&
+      !enabling_device_state_) || block_write_)
   {
     feedback_ = base_cyclic_->RefreshFeedback();
     return hardware_interface::return_type::OK;
@@ -892,6 +900,7 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
     // this is needed when the robot was faulted
     // so we can internally conclude it is not faulted anymore
     feedback_ = base_cyclic_->RefreshFeedback();
+    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000, "Robot is in fault!");
   }
 
   // Forward gripper commands to the background thread via atomics.
@@ -1092,13 +1101,22 @@ void Kortex3HardwareInterfaceLowLevel::sendJointPositionCommands()
 
 void Kortex3HardwareInterfaceLowLevel::sendTwistCommand()
 {
-  k_api_twist_->set_linear_x(twist_cmd_[0]);
-  k_api_twist_->set_linear_y(twist_cmd_[1]);
-  k_api_twist_->set_linear_z(twist_cmd_[2]);
-  k_api_twist_->set_angular_x(twist_cmd_[3] * 180.0 / M_PI);
-  k_api_twist_->set_angular_y(twist_cmd_[4] * 180.0 / M_PI);
-  k_api_twist_->set_angular_z(twist_cmd_[5] * 180.0 / M_PI);
-  base_mqtt_->SendTwistCommand(k_api_twist_command_);
+  try
+  {
+    k_api_twist_->set_linear_x(twist_cmd_[0]);
+    k_api_twist_->set_linear_y(twist_cmd_[1]);
+    k_api_twist_->set_linear_z(twist_cmd_[2]);
+    k_api_twist_->set_angular_x(twist_cmd_[3] * 180.0 / M_PI);
+    k_api_twist_->set_angular_y(twist_cmd_[4] * 180.0 / M_PI);
+    k_api_twist_->set_angular_z(twist_cmd_[5] * 180.0 / M_PI);
+    base_mqtt_->SendTwistCommand(k_api_twist_command_);
+  }
+  catch (const k_api::KDetailedException& e)
+  {
+    RCLCPP_ERROR(LOGGER, "Unexpected error when sending twist command: %s", e.what());
+    RCLCPP_ERROR_STREAM(LOGGER, "Error sub-code: " << k_api::SubErrorCodes_Name(
+                                    k_api::SubErrorCodes((e.getErrorInfo().getError().error_sub_code()))));
+  }
 }
 
 void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
@@ -1110,7 +1128,7 @@ void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
 
   while (gripper_thread_running_.load(std::memory_order_relaxed))
   {
-    if (!gripper_a_.joint_name_.empty() && gripper_a_.initialized_)
+    if (!gripper_a_.joint_name_.empty() && gripper_a_.initialized_ && !in_fault_)
     {
       // Read position from hardware and publish to atomic
       auto pos = gripper_a_.readPosition(gripper_mtx_, LOGGER);
@@ -1123,7 +1141,7 @@ void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
         gripper_a_.sendCommand(cmd, gripper_mtx_);
     }
 
-    if (!gripper_b_.joint_name_.empty() && gripper_b_.initialized_)
+    if (!gripper_b_.joint_name_.empty() && gripper_b_.initialized_ && !in_fault_)
     {
       auto pos = gripper_b_.readPosition(gripper_mtx_, LOGGER);
       if (pos.has_value())
