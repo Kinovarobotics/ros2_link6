@@ -261,7 +261,7 @@ This package is under active development. Users are encouraged to report any bug
 To bringup a simulated Link6, use the following:
 
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share:$(ros2 pkg prefix robotiq_description)/share
 ros2 launch link6_bringup link6_sim.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 
@@ -451,7 +451,6 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
      --activate twist_controller \
      --deactivate joint_trajectory_controller
    ```
-   **P.S.** Make sure to keep pressing the enabling button (for example: dead man's switch) during the control switch process, otherwise the system will crash.
 
 2. Publish a twist command (e.g., move at 2 cm/s along X):
 
@@ -459,7 +458,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
    ros2 topic pub /twist_controller/commands geometry_msgs/msg/Twist "{
      linear: {x: 0.02, y: 0.0, z: 0.0},
      angular: {x: 0.0, y: 0.0, z: 0.0}
-   }" -r 1
+   }" --once
    ```
 
 **NOTE:** Always publish a zero-velocity twist to stop the arm after motion, as the controller keeps applying the last received command.
@@ -550,7 +549,7 @@ ros2 service call /kortex3_hardware/set_operating_mode \
   kortex3_hardware/srv/SetOperatingMode "{ operating_mode: 4 }"
 ```
 
-**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons.
+**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons. Moreover, sometimes it is required to go through monitored stop mode before switching to other modes.
 
 ### 4.3 Fault Handling
 
@@ -585,6 +584,8 @@ For testing and development purposes, you can programmatically trigger a fault s
 - Validating safety systems
 
 #### Triggering a Simulated Emergency Stop
+
+After putting the robot in `auto` mode, use the following terminal command:
 
 ```bash
 ros2 service call /kortex3_hardware/simulate_estop \

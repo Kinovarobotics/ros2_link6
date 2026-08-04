@@ -233,7 +233,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "safety_mode",
-            default_value="reduced",
+            default_value="normal",
             description="Safety system mode used when the low-level position controller is active.",
             choices=["reduced", "normal"],
         )
