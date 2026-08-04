@@ -261,7 +261,7 @@ This package is under active development. Users are encouraged to report any bug
 To bringup a simulated Link6, use the following:
 
 ```bash
-export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share
+export GZ_SIM_RESOURCE_PATH=$GZ_SIM_RESOURCE_PATH:$(ros2 pkg prefix link6_description)/share:$(ros2 pkg prefix robotiq_description)/share
 ros2 launch link6_bringup link6_sim.launch.py gripper:=robotiq_2f_85 calibration_file:=/path/to/calibration/folder/calibration.yaml
 ```
 
@@ -321,15 +321,10 @@ This launch file accept the same parameters as the default one:
 
 * `password` : Password to start a session to interact with the robot. Default value is `admin`.
 
-* `operating_mode` : Operating mode applied to the robot when the low-level position controller is activated. Accepted values are `hold_to_run` (the operator must keep a button pressed for motion to proceed) and `auto` (motion runs without operator input). Default value is `hold_to_run`.
-
 * `safety_mode` : Safety system mode applied when the low-level position controller is activated. `reduced` enforces slower joint speed limits, while `normal` allows the full speed envelope. Default value is `reduced`.
   
 > [!IMPORTANT]
 > The low-level driver operates in **Hold-to-Run** mode by default. The arm will only execute motion commands while the **Enabling Device** (the 3-position enabling switch) is held in the intermediate (enabled) position. Releasing or fully pressing the enabling device will stop the arm immediately.
-
-> [!CAUTION]
-> In **Auto** mode the arm will move even if the **Enabling Device** is not pressed. Please exercise caution when using this mode. Please read and understand all safety considerations and exercise caution when using this mode (refer to the Link 6 User Guide for information).
 
 **Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 
@@ -387,11 +382,21 @@ ros2 control switch_controllers \
 
 1. **Activate** it (see above).
 
-2. **Send target pose**:
+2. **Safety Warning:** The controller drives the end effector toward `target_frame` with a velocity proportional to the pose error. If the commanded target is far from the robot's **current** pose, the resulting error is large and the robot will move at **high velocity**, which can be dangerous. **Never send an arbitrary absolute target as your first command.** Always seed the target with the current pose and then move in small increments. 
 
-```bash
-ros2 topic pub --once /cartesian_motion_controller/target_frame geometry_msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: 0.5, y: 0.0, z: 0.4}, orientation: {x: -0.766, y: 0.642, z: 0.0, w: 0.0}}}"
-```
+3. **Read the current end-effector pose** (relative to `base_link`):                                                                
+
+    ```bash
+    ros2 run tf2_ros tf2_echo base_link end_effector_link             
+    ```                                                               
+
+Note the reported `Translation` (x, y, z) and `Rotation` quaternion (x, y, z, w).
+
+4. **Send target pose** and make sure it is reasonably close to the current pose:
+
+    ```bash
+    ros2 topic pub --once /cartesian_motion_controller/target_frame geometry_msgs/msg/PoseStamped "{header: {frame_id: 'base_link'}, pose: {position: {x: <double>, y: <double>, z: <double>}, orientation: {x: <double>, y: <double>, z: <double>, w: <double>}}}"
+    ```
 
 #### 2.2.4 Joint Velocity Controller
 
@@ -415,26 +420,28 @@ Ensure your `data` array matches the `joints:` ordering in your controller yaml.
 
 #### Real-life Control:
 
-1. Fully open the gripper:
-```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 1.0, max_effort: 100.0}}"
-```
+The gripper position is commanded in **radians**, matching the actuated joint in the URDF (`0.0` = fully open, and the joint's upper limit = fully closed: **`0.8` for the 2f_85**, `0.7` for the 2f_140).
 
-2. Fully close the gripper:
+1. Fully open the gripper:
 ```bash
 ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.0, max_effort: 100.0}}"
 ```
 
-3. You can partially open the gripper by calling the Action server with the previous command and setting the desired position of the gripper to any number between 0.0 (Fully Closed) and 1.0 (Fully Open), for example:
+2. Fully close the gripper (2f_85):
 ```bash
-ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.5, max_effort: 100.0}}"
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.8, max_effort: 100.0}}"
+```
+
+3. You can partially close the gripper by setting the position to any value between `0.0` (fully open) and the closed limit (`0.8` for the 2f_85), for example half-closed:
+```bash
+ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/action/GripperCommand "{command:{position: 0.4, max_effort: 100.0}}"
 ```
 
 **NOTE** Some grippers include an extra rubber layer on the fingertips which will affect the closing position value
 
 #### 2.2.6 Twist Controller
 
-> **Use‑case:** reactive end-effector velocity control in Cartesian space. Only available with the [Low-level Driver](#213-low-level-driver).
+> **Use‑case:** reactive end-effector velocity control in Cartesian space with respect to the **tool frame**. Only available with the [Low-level Driver](#213-low-level-driver).
 > **Type:** `picknik_twist_controller/PicknikTwistController`
 
 1. Activate (see above):
@@ -451,7 +458,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
    ros2 topic pub /twist_controller/commands geometry_msgs/msg/Twist "{
      linear: {x: 0.02, y: 0.0, z: 0.0},
      angular: {x: 0.0, y: 0.0, z: 0.0}
-   }" -r 10
+   }" --once
    ```
 
 **NOTE:** Always publish a zero-velocity twist to stop the arm after motion, as the controller keeps applying the last received command.
@@ -542,7 +549,7 @@ ros2 service call /kortex3_hardware/set_operating_mode \
   kortex3_hardware/srv/SetOperatingMode "{ operating_mode: 4 }"
 ```
 
-**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons.
+**NOTE** Both unspecified and hand_guiding modes cannot be set using ROS since the first mode is just a placeholder and the second one requires pressing the arm's button during operation for safety reasons. Moreover, sometimes it is required to go through monitored stop mode before switching to other modes.
 
 ### 4.3 Fault Handling
 
@@ -577,6 +584,8 @@ For testing and development purposes, you can programmatically trigger a fault s
 - Validating safety systems
 
 #### Triggering a Simulated Emergency Stop
+
+After putting the robot in `auto` mode, use the following terminal command:
 
 ```bash
 ros2 service call /kortex3_hardware/simulate_estop \
@@ -813,10 +822,10 @@ ros2 run rviz2 rviz2 \
 
 ### 5.2 Interactive Marker Control
 
-The robot launches with the cartesian\_motion\_controller active, but the interactive marker handle is off by default. To control the robot by dragging a marker in RViz, you must activate the motion\_control\_handle.
+When launching rviz, the interactive marker handle is off by default. To control the robot by dragging a marker in RViz, you must activate the motion\_control\_handle and cartesian\_motion\_controller and deactivate any other motion controller (like joint_trajectory_controller):
 
 ```bash
-ros2 control switch_controllers --activate motion_control_handle
+ros2 control switch_controllers --activate motion_control_handle cartesian_motion_controller --deactivate joint_trajectory_controller
 ```
 
 If the interactive marker is not on the side menu of rviz, then you can add it by clicking on Add button and in the by topic tab, select /tool\_wrench/Wrench.

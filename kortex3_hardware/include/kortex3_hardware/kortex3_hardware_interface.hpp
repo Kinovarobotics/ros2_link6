@@ -104,6 +104,11 @@ public:
   // Configuration
   std::string joint_name_;
   uint16_t modbus_id_;
+  // Actuated joint's closed-angle limit in radians (URDF <limit upper>). Command
+  // and state both use the joint radian domain [0, max_angle_] (0 = open,
+  // max = closed); this scales that domain to/from the Robotiq raw register
+  // [0, 255]. 0.8 for 2f_85, 0.7 for 2f_140.
+  double max_angle_ = 0.8;
 
   // Modbus communication
   std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
@@ -135,13 +140,14 @@ public:
    * @brief Read gripper position from Modbus
    * @param mutex Mutex protecting Modbus access (shared between grippers)
    * @param logger ROS logger for messages
-   * @return Optional position value in radians
+   * @return Optional joint angle in radians [0, max_angle_] (0.0 = fully open,
+   *         max_angle_ = fully closed), matching the URDF joint for visualization.
    */
   std::optional<double> readPosition(std::mutex& mutex, const rclcpp::Logger& logger);
 
   /**
    * @brief Send position command to gripper via Modbus
-   * @param position_radians Desired position in radians
+   * @param position_radians Desired joint angle in radians [0, max_angle_] (0.0 = fully open, max_angle_ = fully closed)
    * @param mutex Mutex protecting Modbus access (shared between grippers)
    */
   void sendCommand(double position_radians, std::mutex& mutex);
