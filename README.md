@@ -446,7 +446,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
 
 #### 2.2.6 Twist Controller
 
-> **Use‑case:** reactive end-effector velocity control in Cartesian space. Only available with the [Low-level Driver](#213-low-level-driver).
+> **Use‑case:** reactive end-effector velocity control in Cartesian space with respect to the **tool frame**. Only available with the [Low-level Driver](#213-low-level-driver).
 > **Type:** `picknik_twist_controller/PicknikTwistController`
 
 1. Activate (see above):
@@ -456,6 +456,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
      --activate twist_controller \
      --deactivate joint_trajectory_controller
    ```
+   **P.S.** Make sure to keep pressing the enabling button (for example: dead man's switch) during the control switch process, otherwise the system will crash.
 
 2. Publish a twist command (e.g., move at 2 cm/s along X):
 
@@ -463,7 +464,7 @@ ros2 action send_goal /robotiq_gripper_controller/gripper_cmd control_msgs/actio
    ros2 topic pub /twist_controller/commands geometry_msgs/msg/Twist "{
      linear: {x: 0.02, y: 0.0, z: 0.0},
      angular: {x: 0.0, y: 0.0, z: 0.0}
-   }" -r 10
+   }" -r 1
    ```
 
 **NOTE:** Always publish a zero-velocity twist to stop the arm after motion, as the controller keeps applying the last received command.
