@@ -23,7 +23,7 @@
         name="RobotiqGripperHardwareInterface"
         prefix="${prefix}"
         parent="${parent}"
-        sim_gazebo="${sim_gazebo}"
+        sim_ignition="${sim_gazebo}"
         sim_isaac="${sim_isaac}"
         isaac_joint_commands="${isaac_joint_commands}"
         isaac_joint_states="${isaac_joint_states}"

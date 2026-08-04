@@ -1,0 +1,9 @@
+<library path="kortex3_hardware_interface_low_level">
+    <class name="kortex3_driver/Kortex3HardwareInterfaceLowLevel"
+           type="kortex3_driver::Kortex3HardwareInterfaceLowLevel"
+           base_class_type="hardware_interface::SystemInterface">
+        <description>
+            Hardware interface for Kortex 3 (Link6) robots supporting low level position control.
+        </description>
+    </class>
+</library>

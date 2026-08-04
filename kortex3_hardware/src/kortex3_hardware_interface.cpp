@@ -125,9 +125,12 @@ std::optional<double> GripperController::readPosition(std::mutex& mutex, const r
     return std::nullopt;
   }
 
-  // Decode & cache
+  // Decode & cache. Robotiq position register: 0x00 = fully open, 0xFF = fully
+  // closed. Report the joint angle in radians [0, max_angle_] to match the URDF
+  // joint (0.0 = fully open, max_angle_ = fully closed) so RViz visualization is
+  // correct via joint_state_broadcaster -> robot_state_publisher.
   const uint8_t raw = gripper_->GetPosition();
-  position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);
+  position_ = (static_cast<double>(raw) / 255.0) * max_angle_;
   return position_;
 }
 
@@ -139,10 +142,12 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   // Limit command rate
   if (now < next_send_) return;
 
-  // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 0.025);
+  // Command domain is joint radians [0, max_angle_]: 0.0 = fully open,
+  // max_angle_ = fully closed (matches the URDF joint and MoveIt SRDF).
+  // Clamp into range and skip tiny, redundant updates.
+  const double clamped = std::clamp(position_radians, 0.0, max_angle_);
   if (last_cmd_pos_ == last_cmd_pos_ &&   // not NaN
-      std::abs(clamped - last_cmd_pos_) < 0.0001)  // ~0.4% of stroke
+      std::abs(clamped - last_cmd_pos_) < 0.0001)  // rad
   {
     return;
   }
@@ -151,7 +156,8 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   std::lock_guard<std::mutex> lk(mutex);
   if (!initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
+  // Robotiq position register: 0x00 = fully open, 0xFF = fully closed.
+  const uint8_t pos = static_cast<uint8_t>((clamped / max_angle_) * 255.0);
   const uint8_t spd = 255;
 
   // Best-effort write sequence
@@ -245,6 +251,13 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     {
       RCLCPP_INFO(LOGGER, "Gripper A Modbus ID not specified, using default: %u", gripper_a_.modbus_id_);
     }
+
+    // Closed-angle limit (URDF <limit upper>) is optional; defaults to 0.8 (2f_85). Use 0.7 for 2f_140.
+    if (info_.hardware_parameters.count("gripper_max_angle"))
+    {
+      gripper_a_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_max_angle"));
+      RCLCPP_INFO(LOGGER, "Gripper A max angle: %.4f rad", gripper_a_.max_angle_);
+    }
   }
   else
   {
@@ -267,6 +280,13 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     else
     {
       RCLCPP_INFO(LOGGER, "Gripper B Modbus ID not specified, using default: %u", gripper_b_.modbus_id_);
+    }
+
+    // Closed-angle limit (URDF <limit upper>) is optional; defaults to 0.8 (2f_85). Use 0.7 for 2f_140.
+    if (info_.hardware_parameters.count("gripper_b_max_angle"))
+    {
+      gripper_b_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_b_max_angle"));
+      RCLCPP_INFO(LOGGER, "Gripper B max angle: %.4f rad", gripper_b_.max_angle_);
     }
   }
   else
@@ -429,11 +449,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           RCLCPP_WARN(LOGGER, "Failed to read Gripper A position on activation.");
           return hardware_interface::CallbackReturn::ERROR;
         }
-        float gripper_a_initial_position = static_cast<float>(opt_gripper_a_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad.", gripper_a_initial_position);
+        // Seed the command with the current angle (radians) so the gripper holds
+        // its position on startup instead of jerking.
+        double gripper_a_initial_angle = opt_gripper_a_position.value();
+        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad (0=open, %.2f=closed).",
+                    gripper_a_initial_angle, gripper_a_.max_angle_);
 
-        gripper_a_.command_position_ = gripper_a_initial_position;
-        gripper_a_.sendCommand(gripper_a_initial_position, gripper_mtx_);
+        gripper_a_.command_position_ = gripper_a_initial_angle;
+        gripper_a_.sendCommand(gripper_a_initial_angle, gripper_mtx_);
       }
 
       // Initialize Gripper B if joint name was specified
@@ -452,11 +475,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           RCLCPP_WARN(LOGGER, "Failed to read Gripper B position on activation.");
           return hardware_interface::CallbackReturn::ERROR;
         }
-        float gripper_b_initial_position = static_cast<float>(opt_gripper_b_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad.", gripper_b_initial_position);
+        // Seed the command with the current angle (radians) so the gripper holds
+        // its position on startup instead of jerking.
+        double gripper_b_initial_angle = opt_gripper_b_position.value();
+        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad (0=open, %.2f=closed).",
+                    gripper_b_initial_angle, gripper_b_.max_angle_);
 
-        gripper_b_.command_position_ = gripper_b_initial_position;
-        gripper_b_.sendCommand(gripper_b_initial_position, gripper_mtx_);
+        gripper_b_.command_position_ = gripper_b_initial_angle;
+        gripper_b_.sendCommand(gripper_b_initial_angle, gripper_mtx_);
       }
 
       if (!gripper_a_.joint_name_.empty() && !gripper_b_.joint_name_.empty())
