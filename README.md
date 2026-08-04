@@ -321,15 +321,10 @@ This launch file accept the same parameters as the default one:
 
 * `password` : Password to start a session to interact with the robot. Default value is `admin`.
 
-* `operating_mode` : Operating mode applied to the robot when the low-level position controller is activated. Accepted values are `hold_to_run` (the operator must keep a button pressed for motion to proceed) and `auto` (motion runs without operator input). Default value is `auto`.
-
 * `safety_mode` : Safety system mode applied when the low-level position controller is activated. `reduced` enforces slower joint speed limits, while `normal` allows the full speed envelope. Default value is `reduced`.
   
 > [!IMPORTANT]
 > The low-level driver operates in **Hold-to-Run** mode by default. The arm will only execute motion commands while the **Enabling Device** (the 3-position enabling switch) is held in the intermediate (enabled) position. Releasing or fully pressing the enabling device will stop the arm immediately.
-
-> [!CAUTION]
-> In **Auto** mode the arm will move even if the **Enabling Device** is not pressed. Please exercise caution when using this mode. Please read and understand all safety considerations and exercise caution when using this mode (refer to the Link 6 User Guide for information).
 
 **Note:** For the moment, the low-level driver doesn't support the features mentioned in section [Services & Fault Handling](#4-services--fault-handling).
 

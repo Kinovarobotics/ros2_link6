@@ -21,7 +21,6 @@
     mock_sensor_commands:=false
     sim_gazebo:=false
     low_level_mode:=false
-    operating_mode:=auto
     safety_mode:=reduced
     initial_positions:=${dict(joint_1=0.0,joint_2=0.0,joint_3=0.0,joint_4=0.0,joint_5=0.0,joint_6=0.0)}">
 
@@ -67,7 +66,6 @@
             <param name="gripper_b_joint_name">${prefix}${gripper_b_joint_name}</param>
             <param name="gripper_modbus_id">${gripper_modbus_id}</param>
             <param name="gripper_b_modbus_id">${gripper_b_modbus_id}</param>
-            <param name="operating_mode">${operating_mode}</param>
             <param name="safety_mode">${safety_mode}</param>
           </xacro:if>
         </xacro:unless>
