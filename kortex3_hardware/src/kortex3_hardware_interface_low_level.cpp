@@ -138,22 +138,6 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   {
     RCLCPP_INFO(LOGGER, "Connection inactivity timeout is '%d'", connection_inactivity_timeout_);
   }
-  
-  // Operating mode for the low-level position controller (optional, default: hold_to_run)
-  if (info_.hardware_parameters.count("operating_mode"))
-  {
-    const auto & v = info_.hardware_parameters.at("operating_mode");
-    if (v == "auto")
-    {
-      low_level_operating_mode_ = k_api::Common::OPERATING_MODE_AUTO;
-      RCLCPP_INFO(LOGGER, "Low-level operating mode: AUTO");
-    }
-    else
-    {
-      low_level_operating_mode_ = k_api::Common::OPERATING_MODE_HOLD_TO_RUN;
-      RCLCPP_INFO(LOGGER, "Low-level operating mode: HOLD_TO_RUN");
-    }
-  }
 
   // Safety system mode for the low-level position controller (optional, default: reduced)
   if (info_.hardware_parameters.count("safety_mode"))
