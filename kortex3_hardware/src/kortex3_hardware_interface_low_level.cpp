@@ -792,8 +792,7 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 
   if (operating_mode_ == k_api::Common::OPERATING_MODE_MONITORED_STOP)
   {
-    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000,
-                        "Robot is in Monitored Stop and will not move. Reactivate a controller to proceed.");
+    RCLCPP_WARN_THROTTLE(LOGGER, clock_, 3000, "Robot is in Monitored Stop and will not move.");
   }
 
   if ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN || 
@@ -808,6 +807,15 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
   // Detect if the arm is in fault
   in_fault_ = (arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT ||
       arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT_POWERED_OFF);
+
+  // If the enabling device is released in JOG_MANUAL mode, the arm swithces automatically
+  // to MONITORED_STOP. We need to change it back to JOG_MANUAL once the enabling device is back
+  if ((joint_velocity_control_mode_running_ || twist_control_mode_running_) &&
+      operating_mode_ == k_api::Common::OPERATING_MODE_MONITORED_STOP && 
+      enabling_device_state_ && !in_fault_)
+  {
+    change_operating_mode(k_api::Common::OPERATING_MODE_JOG_MANUAL);
+  }
 
   try
   {
