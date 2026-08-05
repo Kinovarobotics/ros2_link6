@@ -152,6 +152,7 @@ This package is under active development. Users are encouraged to report any bug
 
     ```bash
     cd $COLCON_WS
+    shopt -s dotglob
     mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
     ```
 
