@@ -232,6 +232,12 @@ This package is under active development. Users are encouraged to report any bug
 
     Each Kinova Link6 is calibrated in the factory. This data can be extracted from the robot and used to apply robot-specific geometric corrections to the URDF files, improving positional accuracy. Although this step is not mandatory, it is highly recommended to avoid end-effector position errors.
 
+    If not already done, start by installing unzip:
+    ```bash
+    sudo apt update
+    sudo apt install unzip 
+    ```
+
     We provide a launch file to automatically extract the calibration files and generate the corresponding corrections:
 
     ```bash
