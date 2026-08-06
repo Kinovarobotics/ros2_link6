@@ -60,16 +60,16 @@ cartesian_motion_controller:
       - velocity
     solver:
       error_scale: 1.0
-      iterations: 20
+      iterations: 10
       publish_state_feedback: True
 
     pd_gains:
-      trans_x: {p: 25.0}
-      trans_y: {p: 25.0}
-      trans_z: {p: 25.0}
-      rot_x: {p: 25.0}
-      rot_y: {p: 25.0}
-      rot_z: {p: 25.0}
+      trans_x: {p: 10.0}
+      trans_y: {p: 10.0}
+      trans_z: {p: 10.0}
+      rot_x: {p: 10.0}
+      rot_y: {p: 10.0}
+      rot_z: {p: 10.0}
 
 
 motion_control_handle:
