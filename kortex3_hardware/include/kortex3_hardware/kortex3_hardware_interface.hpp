@@ -51,7 +51,6 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "kortex3_hardware/srv/set_operating_mode.hpp"
 #include "kortex3_hardware/srv/clear_faults.hpp"
-#include "kortex3_hardware/srv/simulate_estop.hpp"
 #include "kortex3_hardware/srv/run_program.hpp"
 #include "kortex3_hardware/srv/list_programs.hpp"
 #include "kortex3_hardware/srv/stop_program.hpp"
@@ -204,9 +203,6 @@ private:
   void handle_clear_faults(
       const std::shared_ptr<kortex3_hardware::srv::ClearFaults::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response);
-  void handle_simulate_estop(
-      const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
-      std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response);
   void handle_run_program(
       const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
       std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response);
@@ -269,7 +265,6 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_publisher_;
   rclcpp::Service<kortex3_hardware::srv::SetOperatingMode>::SharedPtr set_operating_mode_service_;
   rclcpp::Service<kortex3_hardware::srv::ClearFaults>::SharedPtr clear_faults_service_;
-  rclcpp::Service<kortex3_hardware::srv::SimulateEstop>::SharedPtr simulate_estop_service_;
   rclcpp::Service<kortex3_hardware::srv::RunProgram>::SharedPtr run_program_service_;
   rclcpp::Service<kortex3_hardware::srv::ListPrograms>::SharedPtr list_programs_service_;
   rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;

@@ -1,9 +1,0 @@
-# Request
-# enable: true to trigger fault via excessive velocity command
-#         false to acknowledge (actual clearing done via clear_faults service)
-bool enable
-
----
-# Response
-bool success
-string message
