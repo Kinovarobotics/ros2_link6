@@ -50,17 +50,13 @@ This package is under active development. Users are encouraged to report any bug
     - [4.1 Operating Modes](#41-operating-modes)
     - [4.2 Switching Modes](#42-switching-modes)
     - [4.3 Fault Handling](#43-fault-handling)
-    - [4.4 Emergency Stop (Category 0) via ROS2](#44-emergency-stop-category-0-via-ros2)
-      - [Triggering a Simulated Emergency Stop](#triggering-a-simulated-emergency-stop)
-      - [Recovery](#recovery)
-      - [Safety Notes](#safety-notes)
-    - [4.5 Interaction with the Webapp Programs via ROS2](#45-interaction-with-the-webapp-programs-via-ros2)
-      - [4.5.1 Listing the Available Programs](#451-listing-the-available-programs)
-      - [4.5.2 Running a Specific Program](#452-running-a-specific-program)
-      - [4.5.3 Stopping a Running Program](#453-stopping-a-running-program)
-      - [4.5.4 Checking Program Status](#454-checking-program-status)
-      - [4.5.5 Complete Workflow Example](#455-complete-workflow-example)
-      - [4.6 Protection Zones Information](#46-protection-zones-information)
+    - [4.4 Interaction with the Webapp Programs via ROS2](#45-interaction-with-the-webapp-programs-via-ros2)
+      - [4.4.1 Listing the Available Programs](#451-listing-the-available-programs)
+      - [4.4.2 Running a Specific Program](#452-running-a-specific-program)
+      - [4.4.3 Stopping a Running Program](#453-stopping-a-running-program)
+      - [4.4.4 Checking Program Status](#454-checking-program-status)
+      - [4.4.5 Complete Workflow Example](#455-complete-workflow-example)
+      - [4.5 Protection Zones Information](#46-protection-zones-information)
   - [5. Visualization](#5-visualization)
     - [5.1 RViz Setup](#51-rviz-setup)
     - [5.2 Interactive Marker Control](#52-interactive-marker-control)
@@ -413,7 +409,7 @@ Note the reported `Translation` (x, y, z) and `Rotation` quaternion (x, y, z, w)
 2. Publish velocities:
 
    ```bash
-   ros2 topic pub /joint_velocity_controller/commands std_msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" -r 1
+   ros2 topic pub /joint_velocity_controller/commands std_msgs/msg/Float64MultiArray "{ data: [0, 0, 0, 0, 0, 0.1] }" --once
    ```
    
 Ensure your `data` array matches the `joints:` ordering in your controller yaml.
@@ -581,53 +577,13 @@ message: "Faults cleared and arm recovered to OPERATIONAL."
 
 Note: In most cases, errors require the user to hand guide the robot out of the recovery state. Therefore, please make sure to follow the terminal instructions where the launch file was started.
 
-### 4.4 Emergency Stop (Category 0) via ROS2
-
-For testing and development purposes, you can programmatically trigger a fault state without physically pressing the emergency stop button. This is useful for:
-- Testing fault handling logic
-- Automated testing and CI/CD integration
-- Demonstrating fault recovery procedures
-- Validating safety systems
-
-#### Triggering a Simulated Emergency Stop
-
-After putting the robot in `auto` mode, use the following terminal command:
-
-```bash
-ros2 service call /kortex3_hardware/simulate_estop \
-  kortex3_hardware/srv/SimulateEstop "{enable: true}"
-```
-
-**What happens:**
-- The service sends an excessive velocity command to joint 5 (320 deg/s)
-- The robot's safety system detects the violation and enters FAULT state
-- The hardware interface immediately detects the fault and displays recovery instructions
-
-#### Recovery
-
-After triggering the fault, recover using the teach pendant to:
-- Clear the faults
-- Turn on the arm
-- Restart the ROS2 launch file
-
-#### Safety Notes
-
-**Important:**
-- This triggers a **real fault state** on the robot, not a simulation
-- The robot will stop accepting motion commands until fault is cleared
-- Controllers will return ERROR during fault state
-- Use only in controlled testing environments
-- Do not use during critical operations
-
----
-
-### 4.5 Interaction with the Webapp Programs via ROS2
+### 4.4 Interaction with the Webapp Programs via ROS2
 
 Additional services are available to interact with the programs that were previously created and saved on the robot controller via the web application. This covers listing, running, stopping programms as well as reading the status of the program runner.
 
 **Important Safety Note:** Before running any program through ROS2, ensure that all motion controllers (especially `joint_velocity_controller`, `cartesian_motion_controller`, and `motion_control_handle`) are deactivated. The hardware interface includes automatic safety checks to prevent conflicts between ROS2 controllers and program execution.
 
-#### 4.5.1 Listing the Available Programs
+#### 4.4.1 Listing the Available Programs
 
 To retrieve a list of all programs stored on the robot controller:
 
@@ -652,7 +608,7 @@ programs:
 
 The response contains a list of all available programs with their names and internal identifiers. Use the program names when calling the `run_program` service.
 
-#### 4.5.2 Running a Specific Program
+#### 4.4.2 Running a Specific Program
 
 To execute a program by its name (obtained from the list above):
 
@@ -692,7 +648,7 @@ message: "Cannot execute program: The following motion controllers are active: j
 - Commands remain blocked for 1 second after program completion to prevent interference
 - Active motion controllers are automatically detected and prevent program execution
 
-#### 4.5.3 Stopping a Running Program
+#### 4.4.3 Stopping a Running Program
 
 To stop the currently executing program:
 
@@ -714,7 +670,7 @@ message: "Program stopped successfully and operating mode set to AUTO."
 - The robot will decelerate safely according to its motion parameters
 - After stopping, ROS2 velocity controllers can be activated and used again
 
-#### 4.5.4 Checking Program Status
+#### 4.4.4 Checking Program Status
 
 To query the current status of the program runner:
 
@@ -741,7 +697,7 @@ message: "Program runner status: RUNNING"
 - `WAITING_FOR_ACKNOWLEDGE`: Program is waiting for user acknowledgment
 - `UNSPECIFIED`: Status could not be determined
 
-#### 4.5.5 Complete Workflow Example
+#### 4.4.5 Complete Workflow Example
 
 Here's a complete example workflow for executing a program:
 
@@ -777,7 +733,7 @@ ros2 control switch_controllers \
   --activate cartesian_motion_controller
 ```
 
-#### 4.6 Protection Zones Information
+#### 4.5 Protection Zones Information
 
 The hardware interface provides a service to list protection zones that have been created in the web application.
 
