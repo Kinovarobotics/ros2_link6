@@ -39,7 +39,6 @@ FetchContent_MakeAvailable(json_schema_validator)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetOperatingMode.srv"
   "srv/ClearFaults.srv"
-  "srv/SimulateEstop.srv"
   "srv/RunProgram.srv"
   "srv/ListPrograms.srv"
   "srv/StopProgram.srv"
