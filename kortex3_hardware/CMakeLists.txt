@@ -65,32 +65,30 @@ else()
     set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
 endif()
 
+# --- Private gripper implementation (prebuilt) ---
+# The proprietary Robotiq/Modbus/slick gripper code is compiled separately (see
+# the kortex3_hardware_private repository) and ships only as a prebuilt shared
+# library. The public code talks to it exclusively through
+# include/kortex3_hardware/gripper_interface.hpp.
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  set(KORTEX3_PRIVATE_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/release_arm/libkortex3_private.so")
+else()
+  set(KORTEX3_PRIVATE_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/release/libkortex3_private.so")
+endif()
+if(NOT EXISTS "${KORTEX3_PRIVATE_LIB}")
+  message(FATAL_ERROR
+    "Missing prebuilt private gripper library: ${KORTEX3_PRIVATE_LIB}\n"
+    "Build it from the kortex3_hardware_private repository first.")
+endif()
+
 # --- Hardware Interface Library ---
 add_library(kortex3_hardware_interface SHARED
   src/kortex3_hardware_interface.cpp
-  src/Grippers/FingerGripper.cpp
-  src/robotiq_plugin/GripperStatus.cpp
-  src/Grippers/RobotiqGripper.cpp
-  src/Grippers/VacuumGripper.cpp
-  src/slick/Communication/ModbusClientWrapper.cpp
-  src/slick/Communication/DeviceCommunication.cpp
-  src/slick/Synchronization/WaitableScopeFlag.cpp
-  src/slick/Synchronization/ScopeFlag.cpp
-  src/slick/Communication/ModbusRequestBuffer.cpp
 )
 
 add_library(kortex3_hardware_interface_low_level SHARED
   src/kortex3_hardware_interface_low_level.cpp
   src/gripper_controller.cpp
-  src/Grippers/FingerGripper.cpp
-  src/robotiq_plugin/GripperStatus.cpp
-  src/Grippers/RobotiqGripper.cpp
-  src/Grippers/VacuumGripper.cpp
-  src/slick/Communication/ModbusClientWrapper.cpp
-  src/slick/Communication/DeviceCommunication.cpp
-  src/slick/Synchronization/WaitableScopeFlag.cpp
-  src/slick/Synchronization/ScopeFlag.cpp
-  src/slick/Communication/ModbusRequestBuffer.cpp
 )
 
 target_include_directories(kortex3_hardware_interface PUBLIC
@@ -107,41 +105,15 @@ target_include_directories(kortex3_hardware_interface PUBLIC
         "${KORTEX_SDK_DIR}/include/server"
         "${KORTEX_SDK_DIR}/include/server_stubs"
         "${KORTEX_SDK_DIR}/include/util"
-        # robotiq gripper plugin headers
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/Grippers"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/robotiq_plugin"
-        # slick headers (root and submodules)
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Communication"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Config"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/File"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/HallOfFame"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/IO"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Kin"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Math"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Python"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Robot"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Storage"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Synchronization"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/TestHelpers"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Trajectory"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Utils"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Uuid"
-        # kortex plugin sdk headers
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/tool"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/base"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/base/action"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/base/configuration"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/base/state"
+        # kortex plugin sdk (public) headers
         "${CMAKE_CURRENT_SOURCE_DIR}/include/kortex_plugin_sdk/utils"
         # json schema validator
         "${json_schema_validator_SOURCE_DIR}/src"
-
-        
 )
 
 target_link_libraries(kortex3_hardware_interface PUBLIC
         "${KORTEX_API_LIB}"
+        "${KORTEX3_PRIVATE_LIB}"
         nlohmann_json::nlohmann_json
         pthread
 )
@@ -160,30 +132,11 @@ target_include_directories(kortex3_hardware_interface_low_level PUBLIC
   "${KORTEX_SDK_DIR}/include/participant"
   "${KORTEX_SDK_DIR}/include/server"
   "${KORTEX_SDK_DIR}/include/server_stubs"
-  # robotiq gripper plugin headers
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/Grippers"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/robotiq_plugin"
-  # slick headers
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Communication"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Config"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/File"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/HallOfFame"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/IO"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Kin"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Math"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Python"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Robot"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Storage"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Synchronization"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/TestHelpers"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Trajectory"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Utils"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Uuid"
 )
 
 target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
   "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+  "${KORTEX3_PRIVATE_LIB}"
   pthread
 )
 
@@ -260,6 +213,15 @@ if(BUILD_TESTING)
 endif()
 
 # --- Installation Rules ---
+# The plugin libraries dlopen against libkortex3_private.so, installed alongside
+# them in lib/. Ensure the loader searches the install lib dir via $ORIGIN.
+set_target_properties(
+        kortex3_hardware_interface
+        kortex3_hardware_interface_low_level
+        PROPERTIES INSTALL_RPATH "$ORIGIN")
+
+install(FILES "${KORTEX3_PRIVATE_LIB}" DESTINATION lib)
+
 set(install_targets kortex3_hardware_interface get_calibration_node kortex3_hardware_interface_low_level)
 if(BUILD_TESTING)
     list(APPEND install_targets
