@@ -19,25 +19,11 @@
 
 #include "RouterMQTT.h"
 #include "rclcpp/rclcpp.hpp"
-#include "robotiq_gripper/Grippers/FingerGripper.h"
-#include "robotiq_gripper/robotiq_plugin/GripperStatus.h"
+#include "kortex3_hardware/gripper_interface.hpp"
 
 namespace kortex3_driver
 {
 namespace k_api = Kinova::Api;
-
-/**
- * @class MyFingerGripper
- * @brief Extends FingerGripper to provide a custom Modbus timeout.
- */
-class MyFingerGripper : public FingerGripper
-{
-public:
-  explicit MyFingerGripper(std::shared_ptr<slick::com::ModbusClientWrapper> wrapper)
-  : FingerGripper(wrapper) {}
-
-  uint32_t GetModbusTimeout() override { return 200; }
-};
 
 /**
  * @class GripperController
@@ -61,9 +47,9 @@ public:
   // (0 = fully open, max_angle_ = fully closed). Default 0.8 (2f_85); use 0.7 for the 2f_140.
   double max_angle_ = 0.8;
 
-  // Modbus objects
-  std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
-  std::unique_ptr<MyFingerGripper> gripper_;
+  // Gripper handle (concrete Robotiq/Modbus implementation lives in the private
+  // libkortex3_private.so, behind the gripper::IGripper facade).
+  std::unique_ptr<gripper::IGripper> gripper_;
   bool initialized_ = false;
 
   // Internal state (owned by background thread)
