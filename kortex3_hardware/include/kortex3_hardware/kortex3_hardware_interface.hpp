@@ -63,9 +63,8 @@
 #include "controller_manager_msgs/srv/list_controllers.hpp"
 #include "controller_manager_msgs/srv/switch_controller.hpp"
 
-// Robotiq gripper plugin headers
-#include "robotiq_gripper/Grippers/FingerGripper.h"
-#include "robotiq_gripper/robotiq_plugin/GripperStatus.h"
+// Robotiq gripper facade (private implementation in libkortex3_private.so)
+#include "kortex3_hardware/gripper_interface.hpp"
 
 namespace kortex3_driver
 {
@@ -80,16 +79,6 @@ namespace fs = std::filesystem;
  * enabling control via the ros2_control framework. It handles communication for
  * low-frequency commands (MQTT) and high-frequency state feedback (UDP).
  */
-
-class MyFingerGripper : public FingerGripper {
-public:
-  MyFingerGripper(std::shared_ptr<slick::com::ModbusClientWrapper> wrapper)
-  : FingerGripper(wrapper) {}
-
-  uint32_t GetModbusTimeout() override {
-    return 200; // Or retrieve from wrapper if needed
-  }
-};
 
 /**
  * @class GripperController
@@ -109,9 +98,9 @@ public:
   // [0, 255]. 0.8 for 2f_85, 0.7 for 2f_140.
   double max_angle_ = 0.8;
 
-  // Modbus communication
-  std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
-  std::unique_ptr<MyFingerGripper> gripper_;
+  // Gripper handle (concrete Robotiq/Modbus implementation lives in the private
+  // libkortex3_private.so, behind the gripper::IGripper facade).
+  std::unique_ptr<gripper::IGripper> gripper_;
   bool initialized_ = false;
 
   // State

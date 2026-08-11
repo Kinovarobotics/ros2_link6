@@ -25,16 +25,16 @@ bool GripperController::initialize(std::shared_ptr<k_api::RouterMQTT> router, co
 {
   RCLCPP_INFO(logger, "Initializing gripper '%s' with Modbus ID %u", joint_name_.c_str(), modbus_id_);
 
-  modbus_wrapper_ = std::make_shared<slick::com::ModbusClientWrapper>(router, modbus_id_);
+  gripper_ = gripper::makeFingerGripper(router, modbus_id_);
 
-  if (modbus_wrapper_->TryInitConnection() != slick::com::ModbusError::Ok) {
+  if (!gripper_->TryInitConnection()) {
     RCLCPP_ERROR(logger, "Failed to connect to gripper '%s' via Modbus.", joint_name_.c_str());
+    gripper_.reset();
     return false;
   }
 
   RCLCPP_INFO(logger, "Gripper '%s' Modbus connection established.", joint_name_.c_str());
 
-  gripper_ = std::make_unique<MyFingerGripper>(modbus_wrapper_);
   initialized_ = true;
 
   // Activate the gripper
@@ -112,8 +112,8 @@ std::optional<double> GripperController::readPosition(std::mutex& mutex, const r
   bool ok = gripper_->ReadRegister();
   if (!ok) {
     RCLCPP_WARN(logger, "ReadRegister() failed for gripper '%s'; reconnecting and retrying once", joint_name_.c_str());
-    modbus_wrapper_->CloseConnection();
-    if (modbus_wrapper_->TryInitConnection() == slick::com::ModbusError::Ok) {
+    gripper_->CloseConnection();
+    if (gripper_->TryInitConnection()) {
       ok = gripper_->ReadRegister();
     }
   }
@@ -176,9 +176,8 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
 void GripperController::shutdown(std::mutex& mutex)
 {
   std::lock_guard<std::mutex> lk(mutex);
-  if (modbus_wrapper_) modbus_wrapper_->CloseConnection();
+  if (gripper_) gripper_->CloseConnection();
   gripper_.reset();
-  modbus_wrapper_.reset();
   initialized_ = false;
 }
 
