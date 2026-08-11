@@ -74,13 +74,16 @@ def launch_setup(context, *args, **kwargs):
         executable='static_transform_publisher',
         name='world_to_base_link',
         output='screen',
-        arguments=['0','0','0','0','0','0','world','base_link'],
+        arguments=['--frame-id', 'world', '--child-frame-id', 'base_link'],
     )
 
     controller_manager = Node(
         package="controller_manager",
         executable="ros2_control_node",
         parameters=[robot_description, controller_config],
+        remappings=[
+            ("~/robot_description", "/robot_description"),
+        ],
         output="screen",
         arguments=[
             "--ros-args",
@@ -104,7 +107,6 @@ def launch_setup(context, *args, **kwargs):
         executable = "spawner",
         arguments  = [
             "joint_trajectory_controller",
-            "--inactive",
             "--param-file", controller_config,
             "--controller-manager", "/controller_manager"
         ],
@@ -124,7 +126,7 @@ def launch_setup(context, *args, **kwargs):
     cartesian_motion_controller_spawner = Node(
             package    = "controller_manager",
             executable = "spawner",
-            arguments=["cartesian_motion_controller", "--activate", "--controller-manager-timeout", "300"],
+            arguments=["cartesian_motion_controller", "--inactive", "--controller-manager-timeout", "300"],
             output     = "screen",
         )
 

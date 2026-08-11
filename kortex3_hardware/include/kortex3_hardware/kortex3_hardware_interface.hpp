@@ -51,7 +51,6 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "kortex3_hardware/srv/set_operating_mode.hpp"
 #include "kortex3_hardware/srv/clear_faults.hpp"
-#include "kortex3_hardware/srv/simulate_estop.hpp"
 #include "kortex3_hardware/srv/run_program.hpp"
 #include "kortex3_hardware/srv/list_programs.hpp"
 #include "kortex3_hardware/srv/stop_program.hpp"
@@ -104,6 +103,11 @@ public:
   // Configuration
   std::string joint_name_;
   uint16_t modbus_id_;
+  // Actuated joint's closed-angle limit in radians (URDF <limit upper>). Command
+  // and state both use the joint radian domain [0, max_angle_] (0 = open,
+  // max = closed); this scales that domain to/from the Robotiq raw register
+  // [0, 255]. 0.8 for 2f_85, 0.7 for 2f_140.
+  double max_angle_ = 0.8;
 
   // Modbus communication
   std::shared_ptr<slick::com::ModbusClientWrapper> modbus_wrapper_;
@@ -135,13 +139,14 @@ public:
    * @brief Read gripper position from Modbus
    * @param mutex Mutex protecting Modbus access (shared between grippers)
    * @param logger ROS logger for messages
-   * @return Optional position value in radians
+   * @return Optional joint angle in radians [0, max_angle_] (0.0 = fully open,
+   *         max_angle_ = fully closed), matching the URDF joint for visualization.
    */
   std::optional<double> readPosition(std::mutex& mutex, const rclcpp::Logger& logger);
 
   /**
    * @brief Send position command to gripper via Modbus
-   * @param position_radians Desired position in radians
+   * @param position_radians Desired joint angle in radians [0, max_angle_] (0.0 = fully open, max_angle_ = fully closed)
    * @param mutex Mutex protecting Modbus access (shared between grippers)
    */
   void sendCommand(double position_radians, std::mutex& mutex);
@@ -198,9 +203,6 @@ private:
   void handle_clear_faults(
       const std::shared_ptr<kortex3_hardware::srv::ClearFaults::Request> request,
       std::shared_ptr<kortex3_hardware::srv::ClearFaults::Response> response);
-  void handle_simulate_estop(
-      const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
-      std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response);
   void handle_run_program(
       const std::shared_ptr<kortex3_hardware::srv::RunProgram::Request> request,
       std::shared_ptr<kortex3_hardware::srv::RunProgram::Response> response);
@@ -263,7 +265,6 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_publisher_;
   rclcpp::Service<kortex3_hardware::srv::SetOperatingMode>::SharedPtr set_operating_mode_service_;
   rclcpp::Service<kortex3_hardware::srv::ClearFaults>::SharedPtr clear_faults_service_;
-  rclcpp::Service<kortex3_hardware::srv::SimulateEstop>::SharedPtr simulate_estop_service_;
   rclcpp::Service<kortex3_hardware::srv::RunProgram>::SharedPtr run_program_service_;
   rclcpp::Service<kortex3_hardware::srv::ListPrograms>::SharedPtr list_programs_service_;
   rclcpp::Service<kortex3_hardware::srv::StopProgram>::SharedPtr stop_program_service_;

@@ -37,17 +37,16 @@ FetchContent_MakeAvailable(json_schema_validator)
 
 # --- Service and Message Generation ---
 rosidl_generate_interfaces(${PROJECT_NAME}
-        "srv/SetOperatingMode.srv"
-        "srv/ClearFaults.srv"
-        "srv/SimulateEstop.srv"
-        "srv/RunProgram.srv"
-        "srv/ListPrograms.srv"
-        "srv/StopProgram.srv"
-        "srv/GetProgramStatus.srv"
-        "srv/ListProtectionZones.srv"
-        "srv/SetProtectionZoneState.srv"
-        "msg/ProgramInfo.msg"
-        "msg/ProtectionZoneInfo.msg"
+  "srv/SetOperatingMode.srv"
+  "srv/ClearFaults.srv"
+  "srv/RunProgram.srv"
+  "srv/ListPrograms.srv"
+  "srv/StopProgram.srv"
+  "srv/GetProgramStatus.srv"
+  "srv/ListProtectionZones.srv"
+  "srv/SetProtectionZoneState.srv"
+  "msg/ProgramInfo.msg"
+  "msg/ProtectionZoneInfo.msg"
 )
 
 # --- Kortex SDK Configuration ---
@@ -68,17 +67,30 @@ endif()
 
 # --- Hardware Interface Library ---
 add_library(kortex3_hardware_interface SHARED
-        src/kortex3_hardware_interface.cpp
-        src/Grippers/FingerGripper.cpp
-        src/robotiq_plugin/GripperStatus.cpp
-        src/Grippers/RobotiqGripper.cpp
-        src/Grippers/VacuumGripper.cpp
-        src/slick/Communication/ModbusClientWrapper.cpp
-        src/slick/Communication/DeviceCommunication.cpp
-        src/slick/Synchronization/WaitableScopeFlag.cpp
-        src/slick/Synchronization/ScopeFlag.cpp
-        src/slick/Communication/ModbusRequestBuffer.cpp
-        
+  src/kortex3_hardware_interface.cpp
+  src/Grippers/FingerGripper.cpp
+  src/robotiq_plugin/GripperStatus.cpp
+  src/Grippers/RobotiqGripper.cpp
+  src/Grippers/VacuumGripper.cpp
+  src/slick/Communication/ModbusClientWrapper.cpp
+  src/slick/Communication/DeviceCommunication.cpp
+  src/slick/Synchronization/WaitableScopeFlag.cpp
+  src/slick/Synchronization/ScopeFlag.cpp
+  src/slick/Communication/ModbusRequestBuffer.cpp
+)
+
+add_library(kortex3_hardware_interface_low_level SHARED
+  src/kortex3_hardware_interface_low_level.cpp
+  src/gripper_controller.cpp
+  src/Grippers/FingerGripper.cpp
+  src/robotiq_plugin/GripperStatus.cpp
+  src/Grippers/RobotiqGripper.cpp
+  src/Grippers/VacuumGripper.cpp
+  src/slick/Communication/ModbusClientWrapper.cpp
+  src/slick/Communication/DeviceCommunication.cpp
+  src/slick/Synchronization/WaitableScopeFlag.cpp
+  src/slick/Synchronization/ScopeFlag.cpp
+  src/slick/Communication/ModbusRequestBuffer.cpp
 )
 
 target_include_directories(kortex3_hardware_interface PUBLIC
@@ -134,6 +146,47 @@ target_link_libraries(kortex3_hardware_interface PUBLIC
         pthread
 )
 
+target_include_directories(kortex3_hardware_interface_low_level PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  "${KORTEX_SDK_DIR}/include"
+  "${KORTEX_SDK_DIR}/include/messages"
+  "${KORTEX_SDK_DIR}/include/client"
+  "${KORTEX_SDK_DIR}/include/client_stubs"
+  "${KORTEX_SDK_DIR}/include/client_stubs/SafetyFunctions"
+  "${KORTEX_SDK_DIR}/include/common"
+  "${KORTEX_SDK_DIR}/include/google"
+  "${KORTEX_SDK_DIR}/include/util"
+  "${KORTEX_SDK_DIR}/include/participant"
+  "${KORTEX_SDK_DIR}/include/server"
+  "${KORTEX_SDK_DIR}/include/server_stubs"
+  # robotiq gripper plugin headers
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/Grippers"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/robotiq_plugin"
+  # slick headers
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Communication"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Config"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/File"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/HallOfFame"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/IO"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Kin"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Math"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Python"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Robot"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Storage"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Synchronization"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/TestHelpers"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Trajectory"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Utils"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/robotiq_gripper/slick/Uuid"
+)
+
+target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
+  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+  pthread
+)
+
 ament_target_dependencies(kortex3_hardware_interface PUBLIC
         rclcpp
         rclcpp_lifecycle
@@ -143,6 +196,13 @@ ament_target_dependencies(kortex3_hardware_interface PUBLIC
         tf2_ros
         ament_index_cpp
         controller_manager_msgs
+)
+
+ament_target_dependencies(kortex3_hardware_interface_low_level PUBLIC
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
 )
 
 # --- Modern ROS2 Service Linking ---
@@ -159,20 +219,25 @@ pluginlib_export_plugin_description_file(
         kortex3_hardware_interface.xml
 )
 
+pluginlib_export_plugin_description_file(
+  hardware_interface
+  kortex3_hardware_interface_low_level.xml
+)
+
 # --- Calibration Download Node ---
 add_executable(get_calibration_node src/get_calibration_node.cpp)
 
 target_include_directories(get_calibration_node PUBLIC
-        "${KORTEX_SDK_DIR}/include"
-        "${KORTEX_SDK_DIR}/include/client"
-        "${KORTEX_SDK_DIR}/include/client_stubs"
-        "${KORTEX_SDK_DIR}/include/common"
-        "${KORTEX_SDK_DIR}/include/google"
-        "${KORTEX_SDK_DIR}/include/messages"
-        "${KORTEX_SDK_DIR}/include/participant"
-        "${KORTEX_SDK_DIR}/include/server"
-        "${KORTEX_SDK_DIR}/include/server_stubs"
-        "${KORTEX_SDK_DIR}/include/util"
+  "${KORTEX_SDK_DIR}/include"
+  "${KORTEX_SDK_DIR}/include/client"
+  "${KORTEX_SDK_DIR}/include/client_stubs"
+  "${KORTEX_SDK_DIR}/include/common"
+  "${KORTEX_SDK_DIR}/include/google"
+  "${KORTEX_SDK_DIR}/include/messages"
+  "${KORTEX_SDK_DIR}/include/participant"
+  "${KORTEX_SDK_DIR}/include/server"
+  "${KORTEX_SDK_DIR}/include/server_stubs"
+  "${KORTEX_SDK_DIR}/include/util"
 )
 
 target_link_libraries(get_calibration_node PUBLIC
@@ -181,8 +246,8 @@ target_link_libraries(get_calibration_node PUBLIC
 )
 
 ament_target_dependencies(get_calibration_node PUBLIC
-        rclcpp
-        ament_index_cpp
+  rclcpp
+  ament_index_cpp
 )
 
 # --- Test Executables ---
@@ -195,7 +260,7 @@ if(BUILD_TESTING)
 endif()
 
 # --- Installation Rules ---
-set(install_targets kortex3_hardware_interface get_calibration_node)
+set(install_targets kortex3_hardware_interface get_calibration_node kortex3_hardware_interface_low_level)
 if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only
@@ -219,6 +284,11 @@ install(
         DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+        FILES kortex3_hardware_interface_low_level.xml
+        DESTINATION share/${PROJECT_NAME}
+)
+
 # --- Install launch files ---
 install(
         DIRECTORY launch/
@@ -236,6 +306,7 @@ install(
 # --- Export Targets for Downstream Packages ---
 ament_export_include_directories(include)
 ament_export_libraries(kortex3_hardware_interface)
+ament_export_libraries(kortex3_hardware_interface_low_level)
 ament_export_dependencies(
         rclcpp
         rclcpp_lifecycle

@@ -125,9 +125,12 @@ std::optional<double> GripperController::readPosition(std::mutex& mutex, const r
     return std::nullopt;
   }
 
-  // Decode & cache
+  // Decode & cache. Robotiq position register: 0x00 = fully open, 0xFF = fully
+  // closed. Report the joint angle in radians [0, max_angle_] to match the URDF
+  // joint (0.0 = fully open, max_angle_ = fully closed) so RViz visualization is
+  // correct via joint_state_broadcaster -> robot_state_publisher.
   const uint8_t raw = gripper_->GetPosition();
-  position_ = 0.025 - (static_cast<double>(raw) / 255.0 * 0.025);
+  position_ = (static_cast<double>(raw) / 255.0) * max_angle_;
   return position_;
 }
 
@@ -139,10 +142,12 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   // Limit command rate
   if (now < next_send_) return;
 
-  // Clamp into stroke and skip tiny, redundant updates
-  const double clamped = std::clamp(position_radians, 0.0, 0.025);
+  // Command domain is joint radians [0, max_angle_]: 0.0 = fully open,
+  // max_angle_ = fully closed (matches the URDF joint and MoveIt SRDF).
+  // Clamp into range and skip tiny, redundant updates.
+  const double clamped = std::clamp(position_radians, 0.0, max_angle_);
   if (last_cmd_pos_ == last_cmd_pos_ &&   // not NaN
-      std::abs(clamped - last_cmd_pos_) < 0.0001)  // ~0.4% of stroke
+      std::abs(clamped - last_cmd_pos_) < 0.0001)  // rad
   {
     return;
   }
@@ -151,7 +156,8 @@ void GripperController::sendCommand(double position_radians, std::mutex& mutex)
   std::lock_guard<std::mutex> lk(mutex);
   if (!initialized_ || !gripper_) return;
 
-  const uint8_t pos = static_cast<uint8_t>((1 - (clamped / 0.025)) * 255.0);
+  // Robotiq position register: 0x00 = fully open, 0xFF = fully closed.
+  const uint8_t pos = static_cast<uint8_t>((clamped / max_angle_) * 255.0);
   const uint8_t spd = 255;
 
   // Best-effort write sequence
@@ -245,6 +251,13 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     {
       RCLCPP_INFO(LOGGER, "Gripper A Modbus ID not specified, using default: %u", gripper_a_.modbus_id_);
     }
+
+    // Closed-angle limit (URDF <limit upper>) is optional; defaults to 0.8 (2f_85). Use 0.7 for 2f_140.
+    if (info_.hardware_parameters.count("gripper_max_angle"))
+    {
+      gripper_a_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_max_angle"));
+      RCLCPP_INFO(LOGGER, "Gripper A max angle: %.4f rad", gripper_a_.max_angle_);
+    }
   }
   else
   {
@@ -267,6 +280,13 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
     else
     {
       RCLCPP_INFO(LOGGER, "Gripper B Modbus ID not specified, using default: %u", gripper_b_.modbus_id_);
+    }
+
+    // Closed-angle limit (URDF <limit upper>) is optional; defaults to 0.8 (2f_85). Use 0.7 for 2f_140.
+    if (info_.hardware_parameters.count("gripper_b_max_angle"))
+    {
+      gripper_b_.max_angle_ = std::stod(info_.hardware_parameters.at("gripper_b_max_angle"));
+      RCLCPP_INFO(LOGGER, "Gripper B max angle: %.4f rad", gripper_b_.max_angle_);
     }
   }
   else
@@ -315,10 +335,6 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_init(
   clear_faults_service_ = node_ptr_->create_service<kortex3_hardware::srv::ClearFaults>(
       "kortex3_hardware/clear_faults",
       std::bind(&Kortex3HardwareInterface::handle_clear_faults,
-                this, std::placeholders::_1, std::placeholders::_2));
-  simulate_estop_service_ = node_ptr_->create_service<kortex3_hardware::srv::SimulateEstop>(
-      "kortex3_hardware/simulate_estop",
-      std::bind(&Kortex3HardwareInterface::handle_simulate_estop,
                 this, std::placeholders::_1, std::placeholders::_2));
   run_program_service_ = node_ptr_->create_service<kortex3_hardware::srv::RunProgram>(
       "kortex3_hardware/run_program",
@@ -429,11 +445,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           RCLCPP_WARN(LOGGER, "Failed to read Gripper A position on activation.");
           return hardware_interface::CallbackReturn::ERROR;
         }
-        float gripper_a_initial_position = static_cast<float>(opt_gripper_a_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad.", gripper_a_initial_position);
+        // Seed the command with the current angle (radians) so the gripper holds
+        // its position on startup instead of jerking.
+        double gripper_a_initial_angle = opt_gripper_a_position.value();
+        RCLCPP_INFO(LOGGER, "Gripper A initial position is '%.4f' rad (0=open, %.2f=closed).",
+                    gripper_a_initial_angle, gripper_a_.max_angle_);
 
-        gripper_a_.command_position_ = gripper_a_initial_position;
-        gripper_a_.sendCommand(gripper_a_initial_position, gripper_mtx_);
+        gripper_a_.command_position_ = gripper_a_initial_angle;
+        gripper_a_.sendCommand(gripper_a_initial_angle, gripper_mtx_);
       }
 
       // Initialize Gripper B if joint name was specified
@@ -452,11 +471,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_activate(
           RCLCPP_WARN(LOGGER, "Failed to read Gripper B position on activation.");
           return hardware_interface::CallbackReturn::ERROR;
         }
-        float gripper_b_initial_position = static_cast<float>(opt_gripper_b_position.value());
-        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad.", gripper_b_initial_position);
+        // Seed the command with the current angle (radians) so the gripper holds
+        // its position on startup instead of jerking.
+        double gripper_b_initial_angle = opt_gripper_b_position.value();
+        RCLCPP_INFO(LOGGER, "Gripper B initial position is '%.4f' rad (0=open, %.2f=closed).",
+                    gripper_b_initial_angle, gripper_b_.max_angle_);
 
-        gripper_b_.command_position_ = gripper_b_initial_position;
-        gripper_b_.sendCommand(gripper_b_initial_position, gripper_mtx_);
+        gripper_b_.command_position_ = gripper_b_initial_angle;
+        gripper_b_.sendCommand(gripper_b_initial_angle, gripper_mtx_);
       }
 
       if (!gripper_a_.joint_name_.empty() && !gripper_b_.joint_name_.empty())
@@ -538,7 +560,6 @@ hardware_interface::CallbackReturn Kortex3HardwareInterface::on_deactivate(
   // Reset ROS 2 interfaces and pointers.
   set_operating_mode_service_.reset();
   clear_faults_service_.reset();
-  simulate_estop_service_.reset();
   run_program_service_.reset();
   list_programs_service_.reset();
   stop_program_service_.reset();
@@ -1458,102 +1479,6 @@ void Kortex3HardwareInterface::handle_clear_faults(
     response->success = false;
     response->message = "Kortex API error: " + std::string(ex.what());
     RCLCPP_ERROR(LOGGER, "Failed to clear faults: %s", ex.what());
-  }
-}
-
-void Kortex3HardwareInterface::handle_simulate_estop(
-  const std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Request> request,
-  std::shared_ptr<kortex3_hardware::srv::SimulateEstop::Response> response)
-{
-  if (request->enable) {
-    RCLCPP_WARN(LOGGER, "==================================================");
-    RCLCPP_WARN(LOGGER, "TRIGGERING ROBOT FAULT VIA SAFETY VIOLATION");
-    RCLCPP_WARN(LOGGER, "Method: Excessive joint velocity command");
-    RCLCPP_WARN(LOGGER, "==================================================");
-
-    try {
-      // Create action with excessive joint velocities that violate safety limits
-      Kinova::Api::Base::Action action;
-      action.set_name("fault_injection_test");
-      auto *js = action.mutable_send_joint_speeds();
-
-      // Send excessive velocity to joint 6 only to trigger safety violation
-      // Normal safe limits: ~1-2 rad/s (57-115 deg/s)
-      // We send 180 deg/s (~3.14 rad/s) to joint 6
-      const float excessive_velocity = 320.0f;  // deg/s
-      const size_t target_joint = 4;  // Joint 6 (0-indexed)
-
-      auto &sp = *js->add_joint_speeds();
-      sp.set_joint_identifier(target_joint);
-      sp.set_value(excessive_velocity);
-
-      RCLCPP_WARN(LOGGER, "Sending excessive velocity (%.0f deg/s, ~%.1f rad/s) to joint %zu",
-                  excessive_velocity, excessive_velocity * M_PI / 180.0, target_joint + 1);
-
-      // Execute - robot's safety system should reject this
-      base_mqtt_->ExecuteAction(action);
-
-      // Wait briefly for fault detection in the read() loop
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-      // Verify robot entered fault state
-      auto arm_state = base_mqtt_->GetArmState();
-      if (arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT ||
-          arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT_POWERED_OFF) {
-        response->success = true;
-        response->message = "SUCCESS: Robot entered FAULT state (" +
-                          k_api::Common::ArmState_Name(arm_state.active_state()) +
-                          "). To recover, use the teach pendant to clear faults and turn on the arm";
-        RCLCPP_WARN(LOGGER, "Robot successfully entered fault state: %s",
-                    k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
-        RCLCPP_WARN(LOGGER, "To recover: Use the teach pendant to cleat faults and turn on the arm");
-      } else {
-        response->success = false;
-        response->message = "Command sent but robot did not enter fault state. "
-                          "Current state: " + k_api::Common::ArmState_Name(arm_state.active_state()) +
-                          ". The robot's safety system may have rejected the command without entering fault.";
-        RCLCPP_WARN(LOGGER, "Robot did not enter fault state. Current state: %s",
-                    k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
-      }
-
-    } catch (const Kinova::Api::KDetailedException &e) {
-      // API rejection is expected - the robot's safety system rejects invalid commands
-      RCLCPP_INFO(LOGGER, "Kortex API rejected command (expected behavior): %s", e.what());
-
-      // Check if rejection triggered a fault state
-      try {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        auto arm_state = base_mqtt_->GetArmState();
-        if (arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT ||
-            arm_state.active_state() == k_api::Common::ARMSTATE_IN_FAULT_POWERED_OFF) {
-          response->success = true;
-          response->message = "SUCCESS: API rejected command and robot entered FAULT state (" +
-                            k_api::Common::ArmState_Name(arm_state.active_state()) +
-                            "). Call clear_faults service to recover.";
-          RCLCPP_WARN(LOGGER, "Fault successfully triggered via API rejection");
-        } else {
-          response->success = false;
-          response->message = "API rejected command but robot not in fault. "
-                            "Current state: " + k_api::Common::ArmState_Name(arm_state.active_state()) +
-                            ". Try pressing physical E-stop instead.";
-          RCLCPP_INFO(LOGGER, "Command rejected but no fault state entered");
-        }
-      } catch (...) {
-        response->success = false;
-        response->message = "API rejected command. Unable to verify robot state.";
-        RCLCPP_ERROR(LOGGER, "Failed to verify robot state after command rejection");
-      }
-    } catch (const std::exception &e) {
-      response->success = false;
-      response->message = std::string("Unexpected error during fault injection: ") + e.what();
-      RCLCPP_ERROR(LOGGER, "Unexpected error during fault injection: %s", e.what());
-    }
-
-  } else {
-    // Disable - just provide guidance
-    RCLCPP_INFO(LOGGER, "Fault injection disabled. Use clear_faults service to recover from any active faults.");
-    response->success = true;
-    response->message = "To clear active faults, call: ros2 service call /kortex3_hardware/clear_faults kortex3_hardware/srv/ClearFaults \"{}\"";
   }
 }
 

@@ -8,6 +8,10 @@
     robot_ip
     username:=admin
     password:=admin
+    port=1883
+    port_realtime=10001
+    session_inactivity_timeout_ms=60000
+    connection_inactivity_timeout_ms=2000
     use_internal_bus_gripper_comm:=false
     gripper
     gripper_joint_name:=''
@@ -17,7 +21,8 @@
     use_fake_hardware:=false
     mock_sensor_commands:=false
     sim_gazebo:=false
-    moveit_active:=false
+    low_level_mode:=false
+    safety_mode:=reduced
     initial_positions_file:='$(find link6_description)/config/initial_positions.yaml'
     calibration_file:='$(find link6_description)/config/default_calibration.yaml'">
 
@@ -63,6 +68,10 @@
       robot_ip="${robot_ip}"
       username="${username}"
       password="${password}"
+      port="${port}"
+      port_realtime="${port_realtime}"
+      session_inactivity_timeout_ms="${session_inactivity_timeout_ms}"
+      connection_inactivity_timeout_ms="${connection_inactivity_timeout_ms}"
       use_internal_bus_gripper_comm="${use_internal_bus_gripper_comm}"
       gripper="${gripper}"
       gripper_joint_name="${gripper_joint_name}"
@@ -72,8 +81,9 @@
       use_fake_hardware="${use_fake_hardware}"
       mock_sensor_commands="${mock_sensor_commands}"
       sim_gazebo="${sim_gazebo}"
-      initial_positions="${initial_positions}"
-      moveit_active="${moveit_active}" />
+      low_level_mode="${low_level_mode}"
+      safety_mode="${safety_mode}"
+      initial_positions="${initial_positions}" />
 
 
     <!-- Define material colors -->
@@ -310,7 +320,6 @@
       <axis xyz="0 0 1" />
       <limit lower="-6.283185307179586" upper="6.283185307179586" effort="210"
         velocity="3.141592653589793" />
-      <initial_position>1.57079632679</initial_position>
     </joint>
     <link name="${prefix}lower_wrist_link">
       <inertial>
@@ -369,7 +378,7 @@
       <child link="${prefix}lower_wrist_link" />
       <axis xyz="0 0 1" />
       <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" />
+        velocity="5.5851" />
     </joint>
     <link name="${prefix}upper_wrist_link">
       <inertial>
@@ -423,7 +432,7 @@
       <child link="${prefix}upper_wrist_link" />
       <axis xyz="0 0 1" />
       <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" />
+        velocity="5.5851" />
     </joint>
     <link name="${prefix}wrist_interface_link">
       <inertial>
@@ -458,7 +467,7 @@
       <child link="${prefix}wrist_interface_link" />
       <axis xyz="0 0 1" />
       <limit lower="-6.283185307179586" upper="6.283185307179586" effort="100"
-        velocity="6.283185307179586" />
+        velocity="5.5851" />
     </joint>
 
     <link name="${prefix}end_effector_link" />
