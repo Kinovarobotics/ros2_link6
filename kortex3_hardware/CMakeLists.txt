@@ -16,6 +16,7 @@ find_package(tf2_ros REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 include(FetchContent)
 
@@ -45,6 +46,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetProgramStatus.srv"
   "srv/ListProtectionZones.srv"
   "srv/SetProtectionZoneState.srv"
+  "msg/BaseFeedback.msg"
   "msg/ProgramInfo.msg"
   "msg/ProtectionZoneInfo.msg"
 )
@@ -173,6 +175,7 @@ ament_target_dependencies(kortex3_hardware_interface_low_level PUBLIC
   pluginlib
   rclcpp
   rclcpp_lifecycle
+  std_srvs
 )
 
 # --- Modern ROS2 Service Linking ---
@@ -180,6 +183,9 @@ rosidl_get_typesupport_target(cpp_typesupport_target
         ${PROJECT_NAME} "rosidl_typesupport_cpp"
 )
 target_link_libraries(kortex3_hardware_interface PUBLIC
+        ${cpp_typesupport_target}
+)
+target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
         ${cpp_typesupport_target}
 )
 

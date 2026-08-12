@@ -56,6 +56,22 @@ Kortex3HardwareInterfaceLowLevel::Kortex3HardwareInterfaceLowLevel()
   }
 }
 
+Kortex3HardwareInterfaceLowLevel::~Kortex3HardwareInterfaceLowLevel()
+{
+  // Guard against destruction without a preceding on_deactivate (e.g. abrupt shutdown):
+  // a joinable std::thread destroyed while still running would call std::terminate().
+  stopGripperThread();
+
+  if (executor_)
+  {
+    executor_->cancel();
+  }
+  if (executor_thread_.joinable())
+  {
+    executor_thread_.join();
+  }
+}
+
 hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(const hardware_interface::HardwareInfo& info)
 {
   RCLCPP_INFO(LOGGER, "Initializing Kortex3 Hardware Interface...");
@@ -239,6 +255,37 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
     k_api_twist_command_.set_duration(0);
     k_api_twist_ = k_api_twist_command_.mutable_twist();
   }
+
+  // Node hosting non-RT functions (e.g. clear_faults)
+  node_ = std::make_shared<rclcpp::Node>("kortex3_hardware");
+
+  clear_faults_service_ = node_->create_service<std_srvs::srv::Trigger>(
+    "kortex3_hardware/clear_faults",
+    std::bind(&Kortex3HardwareInterfaceLowLevel::handle_clear_faults,
+              this, std::placeholders::_1, std::placeholders::_2));
+
+  activate_robot_service_ = node_->create_service<std_srvs::srv::Trigger>(
+    "kortex3_hardware/activate_robot",
+    std::bind(&Kortex3HardwareInterfaceLowLevel::handle_activate_robot,
+              this, std::placeholders::_1, std::placeholders::_2));
+
+  exit_recovery_state_service_ = node_->create_service<std_srvs::srv::Trigger>(
+    "kortex3_hardware/exit_recovery_state",
+    std::bind(&Kortex3HardwareInterfaceLowLevel::handle_exit_recovery_state,
+              this, std::placeholders::_1, std::placeholders::_2));
+
+  base_feedback_publisher_ = node_->create_publisher<kortex3_hardware::msg::BaseFeedback>(
+    "kortex3_hardware/feedback", 10);
+
+  wall_timer_ = node_->create_wall_timer(
+    std::chrono::milliseconds(1000),
+    std::bind(&Kortex3HardwareInterfaceLowLevel::publishBaseFeedback, this));
+
+  // Spin the node's services/timer on their own dedicated thread, independent of the
+  // gripper background thread (started/stopped separately in on_activate/on_deactivate).
+  executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  executor_->add_node(node_);
+  executor_thread_ = std::thread([this]() { executor_->spin(); });
 
   RCLCPP_INFO(LOGGER, "Hardware Interface successfully initialized.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -699,16 +746,7 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
 {
   RCLCPP_INFO(LOGGER, "Deactivating Kortex Hardware Interface...");
 
-  // Stop the gripper background thread before closing the MQTT session it uses.
-  if (gripper_thread_running_.load(std::memory_order_relaxed))
-  {
-    gripper_thread_running_.store(false, std::memory_order_relaxed);
-    if (gripper_thread_.joinable())
-      gripper_thread_.join();
-    RCLCPP_INFO(LOGGER, "Gripper background thread stopped.");
-  }
-  if (!gripper_a_.joint_name_.empty()) gripper_a_.shutdown(gripper_mtx_);
-  if (!gripper_b_.joint_name_.empty()) gripper_b_.shutdown(gripper_mtx_);
+  stopGripperThread();
 
   // Set back the servoing mode to Single Level Servoing and Operating mode to Monitored Stop
   set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
@@ -757,9 +795,6 @@ Kortex3HardwareInterfaceLowLevel::on_deactivate(const rclcpp_lifecycle::State& /
       RCLCPP_ERROR(LOGGER, "Error disconnecting UDP transport: %s", e.what());
     }
   }
-
-  // Memory handling
-  delete k_api_twist_;
 
   RCLCPP_INFO(LOGGER, "Kortex Hardware Interface deactivated.");
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -833,7 +868,10 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
 hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rclcpp::Time& /*time*/,
                                                                const rclcpp::Duration& /*period*/)
 {
+
+  // Check if the arm is in the right conditions before sending commands
   if (operating_mode_ == k_api::Common::OPERATING_MODE_MONITORED_STOP ||
+      operating_mode_ == k_api::Common::OPERATING_MODE_HAND_GUIDING ||
       ((operating_mode_ == k_api::Common::OPERATING_MODE_HOLD_TO_RUN || 
        operating_mode_ == k_api::Common::OPERATING_MODE_JOG_MANUAL) &&
       !enabling_device_state_) || block_write_)
@@ -842,7 +880,7 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::write(const rc
     return hardware_interface::return_type::OK;
   }
 
-  if (!in_fault_)
+  if (arm_state_ == k_api::Common::ArmState::ARMSTATE_ARM_OPERATIONAL)
   {
     if (arm_mode_ == k_api::Base::ServoingMode::SINGLE_LEVEL_SERVOING)
     {
@@ -1111,6 +1149,19 @@ void Kortex3HardwareInterfaceLowLevel::sendTwistCommand()
   }
 }
 
+void Kortex3HardwareInterfaceLowLevel::stopGripperThread()
+{
+  if (gripper_thread_running_.load(std::memory_order_relaxed))
+  {
+    gripper_thread_running_.store(false, std::memory_order_relaxed);
+    if (gripper_thread_.joinable())
+      gripper_thread_.join();
+    RCLCPP_INFO(LOGGER, "Gripper background thread stopped.");
+  }
+  if (!gripper_a_.joint_name_.empty()) gripper_a_.shutdown(gripper_mtx_);
+  if (!gripper_b_.joint_name_.empty()) gripper_b_.shutdown(gripper_mtx_);
+}
+
 void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
 {
   // Run at ~20 Hz. GripperController::sendCommand and readPosition have their own
@@ -1147,6 +1198,241 @@ void Kortex3HardwareInterfaceLowLevel::gripperThreadLoop()
     std::this_thread::sleep_until(next_wakeup);
     next_wakeup += period;
   }
+}
+
+void Kortex3HardwareInterfaceLowLevel::publishBaseFeedback()
+{
+  kortex3_hardware::msg::BaseFeedback msg;
+  msg.active_state = feedback_.base().active_state();
+  msg.active_state_name = k_api::Common::ArmState_Name(feedback_.base().active_state());
+  msg.operating_mode = feedback_.base().operating_mode();
+  msg.operating_mode_name = k_api::Common::OperatingModeType_Name(feedback_.base().operating_mode());
+  msg.enabling_device_state = feedback_.base().enabling_device_state();
+  base_feedback_publisher_->publish(msg);
+}
+
+void Kortex3HardwareInterfaceLowLevel::handle_clear_faults(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ClearFaults request.");
+  try {
+    // Can only clear faults if the robot is in fault
+    auto arm_state = base_mqtt_->GetArmState();
+    if (arm_state.active_state() == k_api::Common::ArmState::ARMSTATE_IN_FAULT ||
+        arm_state.active_state() == k_api::Common::ArmState::ARMSTATE_IN_FAULT_POWERED_OFF)
+    {
+      base_mqtt_->ClearFaults();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+      // Re-fetch state after ClearFaults()
+      arm_state = base_mqtt_->GetArmState();
+
+      // Handle recovery based on arm state after ClearFaults()
+      if (arm_state.active_state() == k_api::Common::ARMSTATE_RECOVERY)
+      {
+        // Arm is in RECOVERY - requires manual hand-guiding
+        RCLCPP_WARN(LOGGER, "═══════════════════════════════════════════════════════════");
+        RCLCPP_WARN(LOGGER, "ROBOT IS NOW IN RECOVERY STATE. MANUAL ACTION REQUIRED:");
+        RCLCPP_WARN(LOGGER, "  1. Press the hand guiding button on the robot arm");
+        RCLCPP_WARN(LOGGER, "  2. Manually guide the robot to a safe position");
+        RCLCPP_WARN(LOGGER, "  3. Release the hand guiding button");
+        RCLCPP_WARN(LOGGER, "  4. Call the exit_recovery_state service");
+        RCLCPP_WARN(LOGGER, "═══════════════════════════════════════════════════════════");
+        response->success = true;
+        response->message = "Faults cleared. Arm state: RECOVERY.";
+      }
+      else if (arm_state.active_state() == k_api::Common::ARMSTATE_ARM_OPERATIONAL)
+      {
+        // Fault cleared and arm is already operational - no recovery needed
+        RCLCPP_INFO(LOGGER, "Faults cleared. Arm is OPERATIONAL.");
+        reset_cmd_interfaces();
+        response->success = true;
+        response->message = "Faults cleared. Arm state: OPERATIONAL.";
+      }
+      else
+      {
+        // Arm is in an unexpected state after clearing faults
+        RCLCPP_WARN(LOGGER, "Fault cleared but arm is in unexpected state: %s",
+                    k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+        response->success = true;
+        response->message = "Faults cleared. Arm state: " + k_api::Common::ArmState_Name(arm_state.active_state());
+      }
+    }
+    else {
+      response->success = false;
+      response->message = "Robot is not in a fault state. Current state: " +
+        k_api::Common::ArmState_Name(arm_state.active_state());
+      RCLCPP_WARN(LOGGER, "Robot is not in a fault state. Current state:  %s",
+        k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Kortex API error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "Failed to clear faults: %s", ex.what());
+  }
+}
+
+void Kortex3HardwareInterfaceLowLevel::handle_exit_recovery_state(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ExitRecoveryState request.");
+  try {
+    // Can only exit recovery if the arm is in RECOVERY state
+    auto arm_state = base_mqtt_->GetArmState();
+    if (arm_state.active_state() == k_api::Common::ArmState::ARMSTATE_RECOVERY)
+    {
+      // Exit recovery state to return to OPERATIONAL
+      base_mqtt_->ExitRecoveryState();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      RCLCPP_INFO(LOGGER, "Called ExitRecoveryState(). Waiting for arm to become OPERATIONAL...");
+
+      // Wait for the arm to confirm it is operational
+      const auto timeout = std::chrono::seconds(10);
+      auto start = std::chrono::steady_clock::now();
+      bool became_operational = false;
+      while (std::chrono::steady_clock::now() - start < timeout) {
+        if (base_mqtt_->GetArmState().active_state() == k_api::Common::ARMSTATE_ARM_OPERATIONAL) {
+          RCLCPP_INFO(LOGGER, "Arm recovered to OPERATIONAL.");
+          became_operational = true;
+          break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      }
+
+      // Report post recovery result
+      if (became_operational)
+      {
+        reset_cmd_interfaces();
+        response->success = true;
+        response->message = "Faults cleared and arm recovered to OPERATIONAL.";
+      }
+      else
+      {
+        response->success = false;
+        response->message = "Recovery sequence timeout - arm did not reach OPERATIONAL state. "
+                            "Hand guiding may not have been performed properly. "
+                            "Current state: " + k_api::Common::ArmState_Name(base_mqtt_->GetArmState().active_state());
+        RCLCPP_ERROR(LOGGER, "Failed to exit recovery. Arm state: %s",
+                      k_api::Common::ArmState_Name(base_mqtt_->GetArmState().active_state()).c_str());
+      }
+    }
+    else
+    {
+      response->success = false;
+      response->message = "Robot is not in RECOVERY state. Current state: " +
+        k_api::Common::ArmState_Name(arm_state.active_state());
+      RCLCPP_WARN(LOGGER, "ClearFaults requested, but robot is not in RECOVERY. State: %s",
+        k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Kortex API error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "Failed to exit recovery state: %s", ex.what());
+  }
+}
+
+void Kortex3HardwareInterfaceLowLevel::handle_activate_robot(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  RCLCPP_INFO(LOGGER, "Received ActivateRobot request.");
+  try 
+  {
+    // Arm can only be activated in IDLE state
+    auto arm_state = base_mqtt_->GetArmState();
+    if (arm_state.active_state() == k_api::Common::ArmState::ARMSTATE_IDLE)
+    {
+      base_mqtt_->ActivateRobot();
+      RCLCPP_INFO(LOGGER, "Power-on command sent. Waiting for arm to become operational (timeout: 60s)...");
+
+      const auto timeout = std::chrono::seconds(60);
+      auto start_time = std::chrono::steady_clock::now();
+      bool is_operational = false;
+
+      while (std::chrono::steady_clock::now() - start_time < timeout)
+      {
+        auto current_state = base_mqtt_->GetArmState().active_state();
+        if (current_state == k_api::Common::ArmState::ARMSTATE_ARM_OPERATIONAL)
+        {
+          is_operational = true;
+          break;
+        }
+        if (current_state == k_api::Common::ArmState::ARMSTATE_IN_FAULT)
+        {
+          RCLCPP_ERROR(LOGGER, "Robot arm entered a fault state during initialization.");
+          break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      }
+
+      if (is_operational)
+      {
+        RCLCPP_INFO(LOGGER, "Robot arm is now operational.");
+        reset_cmd_interfaces();
+        response->success = true;
+        response->message = "Robot activated!";
+      }
+      else 
+      {
+        std::string error_msg = "Failed to power on the robot arm within the timeout. Final state: "
+          + k_api::Common::ArmState_Name(base_mqtt_->GetArmState().active_state());
+        RCLCPP_ERROR(LOGGER, error_msg.c_str());
+        response->success = false;
+        response->message = "Failed to activate the robot.";
+      }
+    }
+    else if (arm_state.active_state() == k_api::Common::ArmState::ARMSTATE_ARM_OPERATIONAL)
+    {
+      RCLCPP_INFO(LOGGER, "Robot arm is already operational.");
+      response->success = true;
+      response->message = "Robot is already operational.";
+    }
+    else
+    {
+      response->success = false;
+      response->message = "Can only activate the robot in IDLE state. Current state: " +
+        k_api::Common::ArmState_Name(arm_state.active_state());
+      RCLCPP_WARN(LOGGER, "Can only activate the robot in IDLE state. Current state: %s",
+        k_api::Common::ArmState_Name(arm_state.active_state()).c_str());
+    }
+  }
+  catch (const k_api::KDetailedException &ex) {
+    response->success = false;
+    response->message = "Kortex API error: " + std::string(ex.what());
+    RCLCPP_ERROR(LOGGER, "Failed to activate robot: %s", ex.what());
+  }
+}
+
+void Kortex3HardwareInterfaceLowLevel::reset_cmd_interfaces()
+{
+  block_write_ = true;
+  joint_positions_cmd_ = joint_positions_;
+  joint_velocities_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+  twist_cmd_ = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+
+  if (low_level_control_mode_running_)
+  {
+    change_operating_mode(low_level_operating_mode_);
+    set_safety_system_mode(low_level_safety_mode_);
+    set_servoing_mode(k_api::Base::LOW_LEVEL_SERVOING);
+  }
+  else if (joint_velocity_control_mode_running_)
+  {
+    set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+    change_operating_mode(k_api::Common::OPERATING_MODE_JOG_MANUAL);
+  }
+  else if (twist_control_mode_running_)
+  {
+    set_servoing_mode(k_api::Base::SINGLE_LEVEL_SERVOING);
+    change_operating_mode(k_api::Common::OPERATING_MODE_JOG_MANUAL);
+  }
+
+  feedback_ = base_cyclic_->RefreshFeedback();
+  block_write_ = false;
 }
 
 }  // namespace kortex3_driver

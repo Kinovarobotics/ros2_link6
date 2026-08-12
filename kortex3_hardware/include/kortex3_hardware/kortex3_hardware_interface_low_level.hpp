@@ -28,9 +28,11 @@
 
 // ROS 2 Headers
 #include "rclcpp/rclcpp.hpp"
-// #include "hardware_interface/hardware_info.hpp"
+#include "rclcpp/executors/single_threaded_executor.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
+#include <std_srvs/srv/trigger.hpp>
+#include "kortex3_hardware/msg/base_feedback.hpp"
 
 namespace k_api = Kinova::Api;
 
@@ -55,9 +57,11 @@ class Kortex3HardwareInterfaceLowLevel : public hardware_interface::SystemInterf
 public:
   // Class Constructor
   Kortex3HardwareInterfaceLowLevel();
+  ~Kortex3HardwareInterfaceLowLevel() override;
 
   // Standard ros2_control lifecycle methods
   hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo& info) override;
+  // hardware_interface::CallbackReturn on_configure(const rclcpp_lifecycle::State& previous_state) override;
   hardware_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
   hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
 
@@ -110,8 +114,38 @@ private:
 
   // Clock used to throttle log messages printed from the 1kHz read()/write() loop.
   rclcpp::Clock clock_;
-  
-  
+
+  // Node hosting non-RT services (e.g. clear_faults). Spun by its own dedicated executor
+  // thread, independent of the gripper background thread and the RT read()/write() loop.
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
+  std::thread executor_thread_;
+  rclcpp::TimerBase::SharedPtr wall_timer_;
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_faults_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr activate_robot_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr exit_recovery_state_service_;
+
+  void handle_clear_faults(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
+  void handle_activate_robot(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
+  void handle_exit_recovery_state(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
+
+  rclcpp::Publisher<kortex3_hardware::msg::BaseFeedback>::SharedPtr base_feedback_publisher_;
+  void publishBaseFeedback();
+
+  // --- Private Helper Methods ---
+  void reset_cmd_interfaces();
+
+
   // --- Kortex API Objects ---
   std::shared_ptr<k_api::RouterMQTT> router_mqtt_;
   std::shared_ptr<k_api::Session::SessionClient> session_mqtt_;
@@ -183,6 +217,7 @@ private:
   std::atomic<bool> gripper_thread_running_;
   std::thread gripper_thread_;
   void gripperThreadLoop();
+  void stopGripperThread();
 
   // --- Private Helper Methods ---
   void change_operating_mode(const k_api::Common::OperatingModeType& mode);
