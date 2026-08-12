@@ -1,1 +1,1 @@
-kortex3_hardware/third_party/kortex3/lib/release/libKortexApiCpp.a filter=lfs diff=lfs merge=lfs -text
+kortex3_hardware/third_party/kortex3/lib/release/*.a filter=lfs diff=lfs merge=lfs -text

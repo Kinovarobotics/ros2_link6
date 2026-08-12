@@ -135,7 +135,7 @@ target_include_directories(kortex3_hardware_interface_low_level PUBLIC
 )
 
 target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
-  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+  "${KORTEX_API_LIB}"
   "${KORTEX3_PRIVATE_LIB}"
   pthread
 )
