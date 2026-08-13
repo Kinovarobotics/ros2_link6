@@ -117,6 +117,16 @@ target_link_libraries(kortex3_hardware_interface PUBLIC
         nlohmann_json::nlohmann_json
         pthread
 )
+# libKortexApiCpp.a statically embeds its own copy of libprotobuf and the
+# Kortex proto-generated descriptor tables. libkortex3_private.so embeds the
+# same descriptors. Without --exclude-libs, both end up exported from this
+# .so's dynamic symbol table, and the dynamic linker's default symbol
+# interposition merges them across the two libraries at runtime, causing
+# protobuf to attempt registering the same descriptor twice in the same
+# process (fatal "File already exists in database" abort in ros2_control_node).
+target_link_options(kortex3_hardware_interface PRIVATE
+        "LINKER:--exclude-libs=libKortexApiCpp.a"
+)
 
 target_include_directories(kortex3_hardware_interface_low_level PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -138,6 +148,13 @@ target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
   "${KORTEX_API_LIB}"
   "${KORTEX3_PRIVATE_LIB}"
   pthread
+)
+# See the matching comment on kortex3_hardware_interface above: prevents this
+# .so from exporting libKortexApiCpp.a's statically-embedded protobuf/Kortex
+# descriptor symbols, which would otherwise collide with libkortex3_private.so's
+# own copies via dynamic symbol interposition.
+target_link_options(kortex3_hardware_interface_low_level PRIVATE
+  "LINKER:--exclude-libs=libKortexApiCpp.a"
 )
 
 ament_target_dependencies(kortex3_hardware_interface PUBLIC
