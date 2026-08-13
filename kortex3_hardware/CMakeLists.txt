@@ -177,32 +177,6 @@ pluginlib_export_plugin_description_file(
   kortex3_hardware_interface_low_level.xml
 )
 
-# --- Calibration Download Node ---
-add_executable(get_calibration_node src/get_calibration_node.cpp)
-
-target_include_directories(get_calibration_node PUBLIC
-  "${KORTEX_SDK_DIR}/include"
-  "${KORTEX_SDK_DIR}/include/client"
-  "${KORTEX_SDK_DIR}/include/client_stubs"
-  "${KORTEX_SDK_DIR}/include/common"
-  "${KORTEX_SDK_DIR}/include/google"
-  "${KORTEX_SDK_DIR}/include/messages"
-  "${KORTEX_SDK_DIR}/include/participant"
-  "${KORTEX_SDK_DIR}/include/server"
-  "${KORTEX_SDK_DIR}/include/server_stubs"
-  "${KORTEX_SDK_DIR}/include/util"
-)
-
-target_link_libraries(get_calibration_node PUBLIC
-        "${KORTEX_API_LIB}"
-        pthread
-)
-
-ament_target_dependencies(get_calibration_node PUBLIC
-  rclcpp
-  ament_index_cpp
-)
-
 # --- Test Executables ---
 if(BUILD_TESTING)
     add_executable(test_read_only test/test_read_only.cpp)
@@ -222,7 +196,7 @@ set_target_properties(
 
 install(FILES "${KORTEX3_PRIVATE_LIB}" DESTINATION lib)
 
-set(install_targets kortex3_hardware_interface get_calibration_node kortex3_hardware_interface_low_level)
+set(install_targets kortex3_hardware_interface kortex3_hardware_interface_low_level)
 if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only
