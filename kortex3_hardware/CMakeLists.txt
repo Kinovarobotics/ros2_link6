@@ -53,16 +53,33 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 set(KORTEX_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/kortex3")
 add_compile_definitions(_OS_UNIX)
 
-# Detect system architecture and select appropriate library
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
-    message(STATUS "Detected x86_64 architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp.a")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp_ARM.a")
-    message(STATUS "Detected ARM architecture (${CMAKE_SYSTEM_PROCESSOR}), using libKortexApiCpp_ARM.a") 
+# --- Prebuilt shared Kinova SDK library ------------------------------------
+# libkortex_api_shared.so is the Kinova SDK (third_party/kortex3 libKortexApiCpp.a)
+# wrapped whole-archive into ONE shared library. Both this package's ros2_control
+# plugins AND the prebuilt libkortex3_private.so (the gripper driver) link it
+# DYNAMICALLY, so the process has a SINGLE protobuf runtime + descriptor pool.
+#
+# If each instead linked the static libKortexApiCpp.a, there would be two
+# independent protobuf copies, each with its own `fixed_address_empty_string`
+# sentinel. Because the gripper shares one k_api::RouterMQTT across the
+# interface.so <-> libkortex3_private.so boundary, a Kinova::Api::Frame allocated
+# by one copy and freed by the other frees a foreign global sentinel ->
+# "free(): invalid pointer" abort during gripper Modbus init.
+#
+# Ships prebuilt (like libkortex3_private.so). Regenerate it with
+# scripts/build_kortex_api_shared.sh whenever third_party/kortex3/libKortexApiCpp.a
+# changes -- and rebuild libkortex3_private.so from the SAME archive at the same
+# time, or their protobuf descriptor layouts drift and registration segfaults at
+# load. Both .so files are committed and must always agree.
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  set(KORTEX_API_SHARED "${CMAKE_CURRENT_SOURCE_DIR}/lib/release_arm/libkortex_api_shared.so")
 else()
-    message(WARNING "Unknown architecture: ${CMAKE_SYSTEM_PROCESSOR}, defaulting to libKortexApiCpp.a")
-    set(KORTEX_API_LIB "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a")
+  set(KORTEX_API_SHARED "${CMAKE_CURRENT_SOURCE_DIR}/lib/release/libkortex_api_shared.so")
+endif()
+if(NOT EXISTS "${KORTEX_API_SHARED}")
+  message(FATAL_ERROR
+    "Missing prebuilt shared Kinova SDK library: ${KORTEX_API_SHARED}\n"
+    "Regenerate it with scripts/build_kortex_api_shared.sh")
 endif()
 
 # --- Private gripper implementation (prebuilt) ---
@@ -112,7 +129,7 @@ target_include_directories(kortex3_hardware_interface PUBLIC
 )
 
 target_link_libraries(kortex3_hardware_interface PUBLIC
-        "${KORTEX_API_LIB}"
+        "${KORTEX_API_SHARED}"
         "${KORTEX3_PRIVATE_LIB}"
         nlohmann_json::nlohmann_json
         pthread
@@ -135,7 +152,7 @@ target_include_directories(kortex3_hardware_interface_low_level PUBLIC
 )
 
 target_link_libraries(kortex3_hardware_interface_low_level PUBLIC
-  "${KORTEX_SDK_DIR}/lib/release/libKortexApiCpp.a"
+  "${KORTEX_API_SHARED}"
   "${KORTEX3_PRIVATE_LIB}"
   pthread
 )
@@ -177,32 +194,6 @@ pluginlib_export_plugin_description_file(
   kortex3_hardware_interface_low_level.xml
 )
 
-# --- Calibration Download Node ---
-add_executable(get_calibration_node src/get_calibration_node.cpp)
-
-target_include_directories(get_calibration_node PUBLIC
-  "${KORTEX_SDK_DIR}/include"
-  "${KORTEX_SDK_DIR}/include/client"
-  "${KORTEX_SDK_DIR}/include/client_stubs"
-  "${KORTEX_SDK_DIR}/include/common"
-  "${KORTEX_SDK_DIR}/include/google"
-  "${KORTEX_SDK_DIR}/include/messages"
-  "${KORTEX_SDK_DIR}/include/participant"
-  "${KORTEX_SDK_DIR}/include/server"
-  "${KORTEX_SDK_DIR}/include/server_stubs"
-  "${KORTEX_SDK_DIR}/include/util"
-)
-
-target_link_libraries(get_calibration_node PUBLIC
-        "${KORTEX_API_LIB}"
-        pthread
-)
-
-ament_target_dependencies(get_calibration_node PUBLIC
-  rclcpp
-  ament_index_cpp
-)
-
 # --- Test Executables ---
 if(BUILD_TESTING)
     add_executable(test_read_only test/test_read_only.cpp)
@@ -220,9 +211,9 @@ set_target_properties(
         kortex3_hardware_interface_low_level
         PROPERTIES INSTALL_RPATH "$ORIGIN")
 
-install(FILES "${KORTEX3_PRIVATE_LIB}" DESTINATION lib)
+install(FILES "${KORTEX_API_SHARED}" "${KORTEX3_PRIVATE_LIB}" DESTINATION lib)
 
-set(install_targets kortex3_hardware_interface get_calibration_node kortex3_hardware_interface_low_level)
+set(install_targets kortex3_hardware_interface kortex3_hardware_interface_low_level)
 if(BUILD_TESTING)
     list(APPEND install_targets
             test_read_only

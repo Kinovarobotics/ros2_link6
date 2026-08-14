@@ -50,13 +50,13 @@ This package is under active development. Users are encouraged to report any bug
     - [4.1 Operating Modes](#41-operating-modes)
     - [4.2 Switching Modes](#42-switching-modes)
     - [4.3 Fault Handling](#43-fault-handling)
-    - [4.4 Interaction with the Webapp Programs via ROS2](#45-interaction-with-the-webapp-programs-via-ros2)
-      - [4.4.1 Listing the Available Programs](#451-listing-the-available-programs)
-      - [4.4.2 Running a Specific Program](#452-running-a-specific-program)
-      - [4.4.3 Stopping a Running Program](#453-stopping-a-running-program)
-      - [4.4.4 Checking Program Status](#454-checking-program-status)
-      - [4.4.5 Complete Workflow Example](#455-complete-workflow-example)
-      - [4.5 Protection Zones Information](#46-protection-zones-information)
+    - [4.4 Interaction with the Webapp Programs via ROS2](#44-interaction-with-the-webapp-programs-via-ros2)
+      - [4.4.1 Listing the Available Programs](#441-listing-the-available-programs)
+      - [4.4.2 Running a Specific Program](#442-running-a-specific-program)
+      - [4.4.3 Stopping a Running Program](#443-stopping-a-running-program)
+      - [4.4.4 Checking Program Status](#444-checking-program-status)
+      - [4.4.5 Complete Workflow Example](#445-complete-workflow-example)
+      - [4.5 Protection Zones Information](#45-protection-zones-information)
   - [5. Visualization](#5-visualization)
     - [5.1 RViz Setup](#51-rviz-setup)
     - [5.2 Interactive Marker Control](#52-interactive-marker-control)
@@ -229,25 +229,14 @@ This package is under active development. Users are encouraged to report any bug
 
     Each Kinova Link6 is calibrated in the factory. This data can be extracted from the robot and used to apply robot-specific geometric corrections to the URDF files, improving positional accuracy. Although this step is not mandatory, it is highly recommended to avoid end-effector position errors.
 
-    If not already done, start by installing unzip:
-    ```bash
-    sudo apt update
-    sudo apt install unzip 
-    ```
+    To extract the the calibration data, navigate to [http://192.168.1.10/dashboard](http://192.168.1.10/dashboard) and follow this proceedure:
 
-    We provide a launch file to automatically extract the calibration files and generate the corresponding corrections:
+    1. Tap Systems > Robot > Arm > Calibration.
+    2. Tap EXPORT in the Export calibration file pane.
+    3. Select a directory in your computer to store the calibration files.
+    4. Tap EXPORT.
 
-    ```bash
-    ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder
-    ```
-
-    When this program is executed it will connect to the robot, download the calibration files, and generate a calibration `.yaml` file into `calibration_dir`. This file can later be used when bringing up the robot (see [Section 2. Usage](#2-usage)).
-
-    If you have multiple robots, you can use the `output_file` argument to save the files from each robot with a different name. For example:
-
-    ```bash
-    ros2 launch kortex3_hardware get_calibration.launch.py robot_ip:=192.168.1.10 calibration_dir:=/path/to/calibration_folder output_file:=robot_1.yaml
-    ```
+    This will download a compressed file (`.zip`) in the directory you selected. Uncompress it to obtain a `.yaml` calibration file. This file can later be used when bringing up the robot (see [Section 2. Usage](#2-usage)).
 
 ---
 
@@ -833,7 +822,9 @@ This package contains the scripts to bringup the robot in real life and in simul
 
 ## Future Developments
 
-- Add End Effector Velocity and Impedance Control
+- Fault handling and high-level services for the low-level driver
+- Force-torque sensor broadcaster for the low-level driver
+- Add End Effector Impedance Control
 - Automated calibration of the Torque/Force sensor
 - Add tool management
 
