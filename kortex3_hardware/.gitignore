@@ -1,0 +1,4 @@
+# Regenerated on every build from the vendored third_party/kortex3/libKortexApiCpp.a
+# (whole-archived into a single shared SDK). ~25 MB and rebuilt each time, so not
+# committed — the public package's build produces it into lib/release/, which is
+# where the private repo (and the installed plugins) pick it up.
