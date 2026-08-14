@@ -81,6 +81,17 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   }
 
   info_ = info;
+  // The prefix used for tf frames
+  tf_prefix_ = info_.hardware_parameters["tf_prefix"];
+  if (tf_prefix_.empty())
+  {
+    RCLCPP_ERROR(LOGGER, "TF prefix is empty!");
+    return CallbackReturn::ERROR;
+  }
+  else
+  {
+    RCLCPP_INFO(LOGGER, "TF prefix is '%s'", tf_prefix_.c_str());
+  }
   // The robot's IP address.
   robot_ip_ = info_.hardware_parameters["robot_ip"];
   if (robot_ip_.empty())
@@ -246,6 +257,9 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   joint_positions_cmd_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
   joint_velocities_cmd_.resize(actuator_count_, std::numeric_limits<double>::quiet_NaN());
 
+  // Initialize the force torque sensor state
+  ft_sensor_.resize(6, 0.0);
+
   // set size of the twist interface
   twist_cmd_.resize(6, 0.0);
 
@@ -327,6 +341,24 @@ std::vector<hardware_interface::StateInterface> Kortex3HardwareInterfaceLowLevel
         arm_joint_names[i], hardware_interface::HW_IF_VELOCITY, &joint_velocities_[i]));
     state_interfaces.emplace_back(hardware_interface::StateInterface(
         arm_joint_names[i], hardware_interface::HW_IF_EFFORT, &joint_torques_[i]));
+  }
+
+  // Register force torque sensor state interfaces
+  for (auto& sensor : info_.sensors) {
+    if (sensor.name == tf_prefix_ + "tcp_force_torque_sensor") {
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "force.x", &ft_sensor_[0]));
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "force.y", &ft_sensor_[1]));
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "force.z", &ft_sensor_[2]));
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "torque.x", &ft_sensor_[3]));
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "torque.y", &ft_sensor_[4]));
+      state_interfaces.emplace_back(
+        hardware_interface::StateInterface(sensor.name, "torque.z", &ft_sensor_[5]));
+    }
   }
 
   return state_interfaces;
@@ -861,6 +893,14 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
     if (!gripper_b_.joint_name_.empty())
       gripper_b_pos_ = gripper_b_pos_atomic_.load(std::memory_order_relaxed);
   }
+
+  // Read force torque sensor measurements
+  ft_sensor_[0] = feedback_.base().tool_external_wrench_force_x();
+  ft_sensor_[1] = feedback_.base().tool_external_wrench_force_y();
+  ft_sensor_[2] = feedback_.base().tool_external_wrench_force_z();
+  ft_sensor_[3] = feedback_.base().tool_external_wrench_torque_x();
+  ft_sensor_[4] = feedback_.base().tool_external_wrench_torque_y();
+  ft_sensor_[5] = feedback_.base().tool_external_wrench_torque_z();
 
   return hardware_interface::return_type::OK;
 }

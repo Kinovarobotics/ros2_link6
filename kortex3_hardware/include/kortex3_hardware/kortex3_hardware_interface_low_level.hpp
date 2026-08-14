@@ -80,6 +80,8 @@ public:
   hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
 
 private:
+  std::string tf_prefix_;   ///< Prefix used for TF frames
+
   // --- Connection and configuration Parameters ---
   std::string robot_ip_;               ///< IP address of the robot controller.
   std::string username_;               ///< Username for session authentication.
@@ -100,6 +102,7 @@ private:
   std::vector<double> joint_positions_;       ///< Buffer for joint position states.
   std::vector<double> joint_velocities_;      ///< Buffer for joint velocity states.
   std::vector<double> joint_torques_;         ///< Buffer for joint torque states.
+  std::vector<double> ft_sensor_;             ///< Buffer for force torque sensor measurements.
 
   // Monotonically increasing frame counter for BaseCyclic commands.
   int base_command_frame_id_; 

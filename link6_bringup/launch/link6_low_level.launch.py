@@ -119,6 +119,17 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
+    force_torque_sensor_broadcaster_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
+            "force_torque_sensor_broadcaster",
+            "--controller-manager", "/controller_manager",
+            "--ros-args", "--log-level", "ERROR"
+        ],
+        output="screen",
+    )
+
     joint_trajectory_controller_spawner = Node(
         package    = "controller_manager",
         executable = "spawner",
@@ -165,6 +176,7 @@ def launch_setup(context, *args, **kwargs):
         static_transform_publisher,
         controller_manager,
         joint_state_broadcaster_spawner,
+        force_torque_sensor_broadcaster_spawner,
         joint_trajectory_controller_spawner,
         joint_velocity_controller_spawner,
         twist_controller_spawner,

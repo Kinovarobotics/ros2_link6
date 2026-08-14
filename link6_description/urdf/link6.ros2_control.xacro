@@ -53,6 +53,7 @@
           </xacro:unless>
           <xacro:if value="${low_level_mode}">
             <plugin>kortex3_driver/Kortex3HardwareInterfaceLowLevel</plugin>
+            <param name="tf_prefix">${prefix}</param>
             <param name="robot_ip">${robot_ip}</param>
             <param name="username">${username}</param>
             <param name="password">${password}</param>
@@ -240,7 +241,16 @@
           </state_interface>
           <state_interface name="velocity" />
           <state_interface name="effort" />
-        </joint>        
+        </joint>
+        
+        <sensor name="${prefix}tcp_force_torque_sensor">
+          <state_interface name="force.x"/>
+          <state_interface name="force.y"/>
+          <state_interface name="force.z"/>
+          <state_interface name="torque.x"/>
+          <state_interface name="torque.y"/>
+          <state_interface name="torque.z"/>
+        </sensor>
       </xacro:if>
 
       <!-- If using the real robot, we need to define gripper joints for the hardware interface -->
