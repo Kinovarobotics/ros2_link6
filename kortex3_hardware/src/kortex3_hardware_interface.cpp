@@ -574,7 +574,7 @@ std::vector<hardware_interface::StateInterface>
 Kortex3HardwareInterface::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> state_interfaces;
-  std::vector<string> arm_joint_names;
+  std::vector<std::string> arm_joint_names;
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     RCLCPP_DEBUG(LOGGER, "export_state_interfaces for joint: %s", info_.joints[i].name.c_str());
@@ -614,7 +614,7 @@ std::vector<hardware_interface::CommandInterface>
 Kortex3HardwareInterface::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> command_interfaces;
-  std::vector<string> arm_joint_names;
+  std::vector<std::string> arm_joint_names;
   for (size_t i = 0; i < info_.joints.size(); i++)
   {
     if (info_.joints[i].name == gripper_a_.joint_name_)
