@@ -27,7 +27,7 @@ joint_state_broadcaster:
 
 force_torque_sensor_broadcaster:
   ros__parameters:
-    sensor_name: $(var tf_prefix)tcp_fts_sensor
+    sensor_name: tcp_force_torque_sensor
     state_interface_names:
       - force.x
       - force.y

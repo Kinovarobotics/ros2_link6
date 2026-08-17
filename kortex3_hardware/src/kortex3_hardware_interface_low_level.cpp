@@ -83,15 +83,7 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
   info_ = info;
   // The prefix used for tf frames
   tf_prefix_ = info_.hardware_parameters["tf_prefix"];
-  if (tf_prefix_.empty())
-  {
-    RCLCPP_ERROR(LOGGER, "TF prefix is empty!");
-    return CallbackReturn::ERROR;
-  }
-  else
-  {
-    RCLCPP_INFO(LOGGER, "TF prefix is '%s'", tf_prefix_.c_str());
-  }
+  RCLCPP_INFO(LOGGER, "TF prefix is '%s'", tf_prefix_.c_str());
   // The robot's IP address.
   robot_ip_ = info_.hardware_parameters["robot_ip"];
   if (robot_ip_.empty())
