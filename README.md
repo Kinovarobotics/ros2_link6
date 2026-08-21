@@ -134,13 +134,13 @@ This package is under active development. Users are encouraged to report any bug
 2. Clone this repository:
 
     ```bash
-    git clone https://github.com/Kinovarobotics/ros2_kortex3.git
+    git clone https://github.com/Kinovarobotics/ros2_link6.git -b humble
     ```
 
 3. Retrieve the kortex 3 library:
 
     ```bash
-    cd ros2_kortex3
+    cd ros2_link6
     git lfs pull
     ```
 
@@ -149,7 +149,7 @@ This package is under active development. Users are encouraged to report any bug
     ```bash
     cd $COLCON_WS
     shopt -s dotglob
-    mv src/ros2_kortex3/* src/ && rm -rf src/ros2_kortex3
+    mv src/ros2_link6/* src/ && rm -rf src/ros2_link6
     ```
 
     At this point, your directories tree should looks as follows:
@@ -162,7 +162,7 @@ This package is under active development. Users are encouraged to report any bug
         ├── link6_bringup/
         ├── link6_control/
         ├── link6_description/
-        ├── ros2_kortex3.humble.repos
+        ├── ros2_link6.humble.repos
         ├── LICENSE
         └── README.md
     ```
@@ -170,7 +170,7 @@ This package is under active development. Users are encouraged to report any bug
 5. Clone additional repositories:
     ```bash
     cd $COLCON_WS
-    vcs import src --skip-existing --input src/ros2_kortex3.$ROS_DISTRO.repos
+    vcs import src --skip-existing --input src/ros2_link6.$ROS_DISTRO.repos
     ```
 
 6. Install Dependencies
