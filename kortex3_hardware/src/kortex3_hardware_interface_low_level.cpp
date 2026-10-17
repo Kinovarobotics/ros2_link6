@@ -287,6 +287,14 @@ hardware_interface::CallbackReturn Kortex3HardwareInterfaceLowLevel::on_init(con
     std::chrono::milliseconds(1000),
     std::bind(&Kortex3HardwareInterfaceLowLevel::publishBaseFeedback, this));
 
+  list_controllers_client_ = node_->create_client<controller_manager_msgs::srv::ListControllers>(
+    "/controller_manager/list_controllers");
+  switch_controller_client_ = node_->create_client<controller_manager_msgs::srv::SwitchController>(
+    "/controller_manager/switch_controller");
+  fault_timer_ = node_->create_wall_timer(
+    std::chrono::milliseconds(100),
+    std::bind(&Kortex3HardwareInterfaceLowLevel::stopControllersOnFault, this));
+
   // Spin the node's services/timer on their own dedicated thread, independent of the
   // gripper background thread (started/stopped separately in on_activate/on_deactivate).
   executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
@@ -848,8 +856,13 @@ hardware_interface::return_type Kortex3HardwareInterfaceLowLevel::read(const rcl
   }
 
   // Detect if the arm is in fault
+  const bool was_in_fault = in_fault_;
   in_fault_ = (arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT ||
       arm_state_ == k_api::Common::ArmState::ARMSTATE_IN_FAULT_POWERED_OFF);
+  if (in_fault_ && !was_in_fault)
+  {
+    stop_controllers_pending_ = true;
+  }
 
   // If the enabling device is released in JOG_MANUAL mode, the arm swithces automatically
   // to MONITORED_STOP. We need to change it back to JOG_MANUAL once the enabling device is back
@@ -1241,6 +1254,38 @@ void Kortex3HardwareInterfaceLowLevel::publishBaseFeedback()
   msg.operating_mode_name = k_api::Common::OperatingModeType_Name(feedback_.base().operating_mode());
   msg.enabling_device_state = feedback_.base().enabling_device_state();
   base_feedback_publisher_->publish(msg);
+}
+
+void Kortex3HardwareInterfaceLowLevel::stopControllersOnFault()
+{
+  if (!stop_controllers_pending_.exchange(false))
+    return;
+
+  if (!list_controllers_client_->service_is_ready() || !switch_controller_client_->service_is_ready())
+  {
+    RCLCPP_WARN(LOGGER, "Controller manager services not available; controllers were not stopped.");
+    return;
+  }
+
+  // Async callbacks run on the executor thread, so nothing here blocks on a response.
+  list_controllers_client_->async_send_request(
+    std::make_shared<controller_manager_msgs::srv::ListControllers::Request>(),
+    [this](rclcpp::Client<controller_manager_msgs::srv::ListControllers>::SharedFuture future) {
+      auto request = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
+      for (const auto& controller : future.get()->controller)
+      {
+        // Broadcasters claim no command interfaces and are left running.
+        if (controller.state == "active" && !controller.claimed_interfaces.empty())
+          request->deactivate_controllers.push_back(controller.name);
+      }
+      if (request->deactivate_controllers.empty())
+        return;
+
+      request->strictness = controller_manager_msgs::srv::SwitchController::Request::BEST_EFFORT;
+      RCLCPP_WARN(LOGGER, "Robot in fault: deactivating %zu controller(s). They must be reactivated manually.",
+                  request->deactivate_controllers.size());
+      switch_controller_client_->async_send_request(request);
+    });
 }
 
 void Kortex3HardwareInterfaceLowLevel::handle_clear_faults(

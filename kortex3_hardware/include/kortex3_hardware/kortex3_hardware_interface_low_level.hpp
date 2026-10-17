@@ -33,6 +33,8 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include <std_srvs/srv/trigger.hpp>
 #include "kortex3_hardware/msg/base_feedback.hpp"
+#include "controller_manager_msgs/srv/list_controllers.hpp"
+#include "controller_manager_msgs/srv/switch_controller.hpp"
 
 namespace k_api = Kinova::Api;
 
@@ -124,6 +126,13 @@ private:
   rclcpp::executors::SingleThreadedExecutor::SharedPtr executor_;
   std::thread executor_thread_;
   rclcpp::TimerBase::SharedPtr wall_timer_;
+
+  // Deactivates controllers on fault; they are not reactivated after recovery.
+  std::atomic<bool> stop_controllers_pending_ = false;
+  rclcpp::TimerBase::SharedPtr fault_timer_;
+  rclcpp::Client<controller_manager_msgs::srv::ListControllers>::SharedPtr list_controllers_client_;
+  rclcpp::Client<controller_manager_msgs::srv::SwitchController>::SharedPtr switch_controller_client_;
+  void stopControllersOnFault();
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_faults_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr activate_robot_service_;
