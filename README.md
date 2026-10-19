@@ -412,6 +412,8 @@ The accepted arguments are:
 
 * `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
 
+* `gripper_modbus_id` : Modbus ID of the gripper on the internal bus. Default value is `9`.
+
 * `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
 * `robot_ip` : IP address by which the robot can be reached. Default value is `192.168.1.10`. If you have reassigned your physical arm's robot IP address, you will need to assign that ip address.
@@ -437,6 +439,8 @@ This launch file accept the same parameters as the default one:
 * `gripper_joint_name` : Name of the controlled joint of the gripper attached to the arm. Default value is `robotiq_85_left_knuckle_joint`.
 
 * `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
+
+* `gripper_modbus_id` : Modbus ID of the gripper on the internal bus. Default value is `9`.
 
 * `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
