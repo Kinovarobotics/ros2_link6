@@ -176,6 +176,7 @@ ament_target_dependencies(kortex3_hardware_interface_low_level PUBLIC
   rclcpp
   rclcpp_lifecycle
   std_srvs
+  controller_manager_msgs
 )
 
 # --- Modern ROS2 Service Linking ---
