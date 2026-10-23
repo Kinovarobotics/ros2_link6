@@ -270,6 +270,12 @@ git lfs pull
 
 Unlike the local installation, there is no need to create a colcon workspace or to rearrange folders: the cloned repository is mounted inside the container and used as the workspace (`/overlay_ws`).
 
+Before building the images, create a `.env` file for Docker Compose:
+
+```bash
+printf "USER_UID=%s\nUSER_GID=%s\n" "$(id -u)" "$(id -g)" > .env
+```
+
 #### 1.2.3 Option A: Docker Compose from a terminal
 
 1. **Build the image.**
