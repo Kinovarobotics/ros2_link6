@@ -18,7 +18,7 @@ setup(
     maintainer='Anas Houssaini',
     maintainer_email='elhoussainianas8@gmail.com',
     description='ROS 2 control nodes for the Kinova Link 6 robot, including teleoperation.',
-    license='BSD',
+    license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

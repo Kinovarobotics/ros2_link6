@@ -69,6 +69,7 @@ This package is under active development. Users are encouraged to report any bug
   - [Future Developments](#future-developments)
   - [Limitations](#limitations)
   - [Authors](#authors)
+  - [License](#license)
 
 ---
 
@@ -846,3 +847,9 @@ This package contains the scripts to bringup the robot in real life and in simul
 - Anas Houssaini - Initial development and ROS2 integration  
 - Abed Al Rahman Al Mrad - Robotiq gripper integration. Hardware interface optimization and extra features addition
 - Rafael Gomes Braga - Implementation of the low-level driver, URDF reestructure and documentation review
+
+## License
+
+This repository is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
+
+The Protocol Buffers headers vendored in `kortex3_hardware/third_party/kortex3/` keep their own BSD license. See [LICENSE-protobuf](kortex3_hardware/third_party/kortex3/LICENSE-protobuf).
