@@ -33,6 +33,7 @@ def launch_setup(context, *args, **kwargs):
     gripper = LaunchConfiguration("gripper")
     gripper_joint_name = LaunchConfiguration("gripper_joint_name")
     use_internal_bus_gripper_comm = LaunchConfiguration("use_internal_bus_gripper_comm")
+    gripper_modbus_id = LaunchConfiguration("gripper_modbus_id")
     calibration_file = LaunchConfiguration("calibration_file")
     robot_ip = LaunchConfiguration("robot_ip")
     username = LaunchConfiguration("username")
@@ -53,6 +54,9 @@ def launch_setup(context, *args, **kwargs):
             " ",
             "use_internal_bus_gripper_comm:=",
             use_internal_bus_gripper_comm,
+            " ",
+            "gripper_modbus_id:=",
+            gripper_modbus_id,
             " ",
             "calibration_file:=",
             calibration_file,
@@ -203,6 +207,13 @@ def generate_launch_description():
             "use_internal_bus_gripper_comm",
             default_value="true",
             description="Use internal bus for gripper communication?",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper_modbus_id",
+            default_value="9",
+            description="Modbus ID of the gripper on the internal bus.",
         )
     )
     declared_arguments.append(
