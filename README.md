@@ -26,8 +26,14 @@ This package is under active development. Users are encouraged to report any bug
 - [ROS2 Kortex 3](#ros2-kortex-3)
   - [Table of Contents](#table-of-contents)
   - [1. Getting Started](#1-getting-started)
-    - [1.1 Prerequisites](#11-prerequisites)
-    - [1.2 Installation](#12-installation)
+    - [1.1 Local Machine Installation](#11-local-machine-installation)
+    - [1.1.1 Prerequisites](#111-prerequisites)
+    - [1.1.2 Installation](#112-installation)
+    - [1.2 Docker Installation](#12-docker-installation)
+      - [1.2.1 Prerequisites](#121-prerequisites)
+      - [1.2.2 Getting the code](#122-getting-the-code)
+      - [1.2.3 Option A: Docker Compose from a terminal](#123-option-a-docker-compose-from-a-terminal)
+      - [1.2.4 Option B: Dev Containers in VS Code](#124-option-b-dev-containers-in-vs-code)
     - [1.3 Setting up the robot](#13-setting-up-the-robot)
   - [2. Usage](#2-usage)
     - [2.1 Quick Launch](#21-quick-launch)
@@ -74,7 +80,11 @@ This package is under active development. Users are encouraged to report any bug
 
 ## 1. Getting Started
 
-### 1.1 Prerequisites
+### 1.1 Local Machine Installation
+
+This section installs ROS 2 Jazzy, Gazebo and every dependency directly on your Ubuntu 24.04 machine. If you would rather not modify your system, use the container-based setup in [1.2 Docker Installation](#12-docker-installation) instead.
+
+### 1.1.1 Prerequisites
 
 1. **ROS2 Jazzy** on Ubuntu 24.04  
     Follow the official guide:  
@@ -121,7 +131,7 @@ This package is under active development. Users are encouraged to report any bug
     ros-jazzy-gripper-controllers
     ```
 
-### 1.2 Installation
+### 1.1.2 Installation
 
 1. Create a new ROS2 workspace:
 
@@ -208,6 +218,135 @@ This package is under active development. Users are encouraged to report any bug
     source ~/.bashrc
     ```
 
+### 1.2 Docker Installation
+
+As an alternative to the local setup, you can run the whole Link6 stack in a container. The repository provides a `Dockerfile` (in `.devcontainer/`) and a `docker-compose.yaml` that produce an image with ROS 2 Jazzy, Gazebo, the Kortex API dependencies and the external packages from `ros2_link6.jazzy.repos` already installed. The same setup works with the Dev Containers feature of Visual Studio Code.
+
+The container shares the host's network and IPC namespaces, runs in privileged mode and is connected to your X11 session. As a result, ROS 2 discovery, graphical tools such as RViz and Gazebo, and USB devices behave as they would on a native installation. To work with a physical robot, you still need to prepare the network connection described in [1.3 Setting up the robot](#13-setting-up-the-robot).
+
+There are two ways to drive the container. [Option A](#123-option-a-docker-compose-from-a-terminal) uses Docker Compose from a terminal, and [Option B](#124-option-b-dev-containers-in-vs-code) lets VS Code build the container and attach to it. Both share the prerequisites and the cloning step below.
+
+#### 1.2.1 Prerequisites
+
+1. **Docker Engine and the Compose plugin**  
+    Install Docker by following the official guide:  
+    https://docs.docker.com/engine/install/ubuntu/  
+    The guide also installs the Compose plugin, which provides the `docker compose` command used in this section.
+
+2. **Docker without `sudo`**  
+    Apply the [post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/), which typically boil down to:
+
+    ```bash
+    sudo usermod -aG docker $USER
+    newgrp docker
+    ```
+
+3. **Check the setup**
+
+    ```bash
+    docker --version
+    docker compose version
+    ```
+
+4. **Git LFS**  
+    The Kortex 3 library is stored with Git LFS, so it must be available when you clone:
+
+    ```bash
+    sudo apt update
+    sudo apt install git-lfs -y
+    git lfs install
+    ```
+
+5. **Visual Studio Code and the Dev Containers extension** (only for Option B)  
+    Download VS Code from https://code.visualstudio.com/ and add the extension:
+
+    ```bash
+    code --install-extension ms-vscode-remote.remote-containers
+    ```
+
+    The [VS Code Dev Containers tutorial](https://code.visualstudio.com/docs/devcontainers/tutorial) explains how the extension works in more detail.
+
+#### 1.2.2 Getting the code
+
+Clone the `jazzy` branch and download the files tracked by Git LFS:
+
+```bash
+git clone https://github.com/Kinovarobotics/ros2_link6.git -b jazzy
+cd ros2_link6
+git lfs pull
+```
+
+Unlike the local installation, there is no need to create a colcon workspace or to rearrange folders: the cloned repository is mounted inside the container and used as the workspace (`/overlay_ws`).
+
+Before building the images, create a `.env` file for Docker Compose:
+
+```bash
+printf "USER_UID=%s\nUSER_GID=%s\n" "$(id -u)" "$(id -g)" > .env
+```
+
+#### 1.2.3 Option A: Docker Compose from a terminal
+
+1. **Build the image.**
+
+    ```bash
+    docker compose build devcontainer
+    ```
+
+    The first build takes a while because Protobuf and the external packages are compiled. Later builds reuse Docker's cache.
+
+2. **Start the container.**
+
+    ```bash
+    docker compose up -d devcontainer
+    ```
+
+    The container starts in the background. If the workspace has not been built yet, which is the case on the very first start, the entrypoint builds it for you. To watch the progress, run `docker compose logs -f devcontainer`.
+
+3. **Enter the container.**
+
+    ```bash
+    docker compose exec -it devcontainer bash
+    ```
+
+    Every new shell has ROS 2 and the workspaces sourced already, so you can go straight to [Section 2. Usage](#2-usage). For example, to start the simulation:
+
+    ```bash
+    ros2 launch link6_bringup link6_sim.launch.py
+    ```
+
+4. **Rebuild after editing the code.**  
+    From `/overlay_ws` inside the container:
+
+    ```bash
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    source install/setup.bash
+    ```
+
+5. **Shut the container down.**
+
+    ```bash
+    docker compose down -t 0
+    ```
+
+    Your code and the `build/`, `install/` and `log/` folders are stored in the repository folder on the host, so nothing is lost.
+
+#### 1.2.4 Option B: Dev Containers in VS Code
+
+1. Open the repository folder in VS Code, for example with `code .` from the `ros2_link6` directory.
+
+2. When VS Code offers to **Reopen in Container**, accept. You can also press `F1` and run **Dev Containers: Reopen in Container**.
+
+3. Wait while VS Code builds the image and starts the container. On the very first start, the entrypoint also builds the workspace, which can take several minutes.
+
+4. Open a terminal with **Terminal > New Terminal**. It runs inside the container with ROS 2 and the workspaces already sourced, so you can continue with [Section 2. Usage](#2-usage).
+
+5. After editing the code, rebuild and source the workspace from that terminal:
+
+    ```bash
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    source install/setup.bash
+    ```
+
 ### 1.3 Setting up the robot
 
 1. **Power on the Link6** until the status LED is solid green.
@@ -287,6 +426,8 @@ The accepted arguments are:
 
 * `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
 
+* `gripper_modbus_id` : Modbus ID of the gripper on the internal bus. Default value is `9`.
+
 * `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
 * `robot_ip` : IP address by which the robot can be reached. Default value is `192.168.1.10`. If you have reassigned your physical arm's robot IP address, you will need to assign that ip address.
@@ -312,6 +453,8 @@ This launch file accept the same parameters as the default one:
 * `gripper_joint_name` : Name of the controlled joint of the gripper attached to the arm. Default value is `robotiq_85_left_knuckle_joint`.
 
 * `use_internal_bus_gripper_comm` : Use internal bus for gripper communication. Default value is `true`.
+
+* `gripper_modbus_id` : Modbus ID of the gripper on the internal bus. Default value is `9`.
 
 * `calibration_file` : Full path to the calibration file extracted on [1.3 Setting up the robot](#13-setting-up-the-robot). If no calibration file is specified, the system will use the default calibration from `link6_description/config/default_calibration.yaml`.
 
