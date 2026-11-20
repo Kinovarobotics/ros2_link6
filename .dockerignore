@@ -1,0 +1,14 @@
+doc
+build/
+install/
+log/
+logs/
+**/__pycache__
+.vscode
+.git
+.gitignore
+.gitattributes
+.dockerignore
+LICENSE
+README.md
+docker-compose.yaml

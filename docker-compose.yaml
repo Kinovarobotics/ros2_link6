@@ -1,0 +1,65 @@
+# Usage:
+#
+# To build the images:
+#   docker compose build
+#
+# To start up a specific service by name:
+#   docker compose up -d <service_name>
+#
+# To open an interactive shell to a running container:
+#   docker compose exec -it <service_name> bash
+
+services:
+
+  link6_ros2_humble:
+    image: link6_ros2_humble:deploy
+    build:
+      context: .
+      dockerfile: ./.devcontainer/Dockerfile
+      args:
+        ROS_DISTRO: humble
+      target: deploy
+    # Interactive shell
+    stdin_open: true
+    tty: true
+    # Networking and IPC for ROS
+    network_mode: host
+    ipc: host
+    # Needed to display graphical applications
+    privileged: true
+    environment:
+      # Allows graphical programs in the container.
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - QT_QPA_PLATFORM=xcb
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    volumes:
+      # Allows graphical programs in the container.
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${XAUTHORITY:-$HOME/.Xauthority}:/root/.Xauthority
+      # Allows accessing external devices
+      - /dev:/dev
+    group_add:
+      - plugdev
+      - dialout
+      - video
+    device_cgroup_rules:
+      - 'c 189:* rmw'
+      - 'c 81:* rmw'
+
+  devcontainer:
+    extends: link6_ros2_humble
+    image: link6_ros2_humble:devcontainer
+    build:
+      context: .
+      dockerfile: ./.devcontainer/Dockerfile
+      target: dev
+      args:
+        - USER_UID=${USER_UID:-1001}
+        - USER_GID=${USER_GID:-1001}
+        - USERNAME=${USERNAME:-devuser}
+    volumes:
+      # Mount the source code
+      - ./:/overlay_ws/:rw
+    user: ${USERNAME:-devuser}
+    command: sleep infinity

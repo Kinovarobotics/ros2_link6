@@ -1,3 +1,17 @@
+# Copyright (c) 2025 Kinova inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -24,6 +38,7 @@ def launch_setup(context, *args, **kwargs):
     gripper = LaunchConfiguration("gripper")
     gripper_joint_name = LaunchConfiguration("gripper_joint_name")
     use_internal_bus_gripper_comm = LaunchConfiguration("use_internal_bus_gripper_comm")
+    gripper_modbus_id = LaunchConfiguration("gripper_modbus_id")
     calibration_file = LaunchConfiguration("calibration_file")
     robot_ip = LaunchConfiguration("robot_ip")
     username = LaunchConfiguration("username")
@@ -51,6 +66,9 @@ def launch_setup(context, *args, **kwargs):
             " ",
             "use_internal_bus_gripper_comm:=",
             use_internal_bus_gripper_comm,
+            " ",
+            "gripper_modbus_id:=",
+            gripper_modbus_id,
             " ",
             "calibration_file:=",
             calibration_file,
@@ -198,6 +216,13 @@ def generate_launch_description():
             "use_internal_bus_gripper_comm",
             default_value="true",
             description="Use internal bus for gripper communication?",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "gripper_modbus_id",
+            default_value="9",
+            description="Modbus ID of the gripper on the internal bus.",
         )
     )
     declared_arguments.append(

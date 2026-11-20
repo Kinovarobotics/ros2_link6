@@ -1,0 +1,38 @@
+{
+    "name": "Link6 Development Container",
+    "dockerComposeFile": "../docker-compose.yaml",
+    "service": "devcontainer",
+    "runServices": [
+        "devcontainer"
+    ],
+    "workspaceFolder": "/overlay_ws",
+    "containerEnv": {
+        "SHELL": "/bin/bash"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "charliermarsh.ruff",
+                "ms-vscode.cpptools-extension-pack",
+                "ms-iot.vscode-ros",
+                "smilerobotics.urdf",
+                "redhat.vscode-xml",
+                "tamasfe.even-better-toml",
+                "timonwong.shellcheck",
+                "yzhang.markdown-all-in-one",
+                "eamodio.gitlens",
+                "morningfrog.urdf-visualizer",
+                "mtsmfm.vscode-stl-viewer"
+            ],
+            "settings": {
+                "files.associations": {
+                    "*.rviz": "yaml",
+                    "*.srdf": "xml",
+                    "*.urdf": "xml",
+                    "*.xacro": "xml"
+                }
+            }
+        }
+    }
+}
