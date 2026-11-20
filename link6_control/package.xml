@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>Control configuration and launch files for the Link6 robot.</description>
   <maintainer email="elhoussainianas8@gmail.com">Anas Houssaini</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
